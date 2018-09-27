@@ -1,0 +1,4 @@
+../../lib/a2kernel8.lib
+a2kernel8.lib
+angext.lib
+angextcontrol.lib
