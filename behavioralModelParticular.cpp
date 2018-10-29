@@ -2,7 +2,7 @@
 可以改进的地方：
 1. 把建立文件指针功能做成一个函数，提高复用性 2018/3/23 21.33
 2. 把optimized vehicle data 做成一个类，将数据与功能组织在一起，便于管理 2018-9-20 13:41:35
-2018-9-27 9:58:44已完成 VVVV 3. 使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28 
+2018-9-27 9:58:44已完成 VVVV 3. 使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28
 4. 写一个debug类或者一些debug函数，用于调试，摆脱传统的注释、运行部分 2018-9-20 13:55:25
 */
 
@@ -12,7 +12,7 @@
 #include "ANGConProxie.h"
 #include <stdio.h>
 #include <fstream>
-#include <math.h>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <cstring>
@@ -50,7 +50,14 @@ double optimizedPolitenessFactor, optimizedThreshold, optimizedSafeFactor; // fo
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = 4000; // work only when   useIterationOptimization = false
+int optimiazedVehID = 4121; // work only when   useIterationOptimization = false
+
+
+
+
+
+
+
 
 struct {
 	bool isExist;
@@ -69,7 +76,12 @@ struct {
 	int preSectionID;
 }vehicleODInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
 
-
+struct TrajectoryData {
+	double time;
+	double coordinateX;
+	double coordinateY;
+	double speed;
+};
 struct VehiclePathInfo {
 
 
@@ -80,32 +92,30 @@ struct VehiclePathInfo {
 		int occurenceVehID;
 		int preLane; // using absolute network lane ID
 		int folLane; // using absolute network lane ID
-	}laneChangeDetailSet[10000]; // the maximum times of lanechanging  
+	}laneChangeDetailSet[10000]; // the maximum times of lanechanging for one vehicle ID
 
 	struct SectionPath {
 		double entrySectionTime;
 		int sectionID;
-	}sectionPathInfo[22];// the maximum of section is 22, so the path section number will not over the 22
+	}sectionPathInfo[23];// the sections are 22 in total, so the path section number will not over the 22
 
 
 	double totalTravelPathLength; // m
 	int totalLaneChangeTimes;
 	double totalTravelTime; // sec
 	double entryTime, exitTime; // sec
-	int entryLane;
+	int entryLaneInitialSection;
 
-	struct {
-		double speedValue;
-		double time;
-	}speedDataSet[9000];
-	//	double	acceleration[36000];
-	int step;
+
+	list <TrajectoryData> trajectoryDataSet;
+	//	double	acceleration[36000]; // 4 hours = 14400 sec = 36000 steps
+
 	//temp variation for judging whether vehicle states is changed
 	int	preSectionID;
 	int currSectionID;
 	int preLane; // using absolute network lane ID
 
-}optVehPathInfo;
+}optVehDataSet;
 
 
 //map sectionID->parameter
@@ -137,12 +147,11 @@ int outPutRunTimes;
 int inPutParaRunTimes;
 
 
-list <int> controlGroupVehIDSet;
+list <int> impactedVehIDSet;
 
 
 // sectionSequence[sequence]=sectionID
 int const sequenceSectionID[23] = { 0,363,364,370,387,1022,952,949,386,395,935,404,974,982,967,406,414,423,986,990,994,998,1002 };
-
 
 
 
@@ -268,7 +277,7 @@ bool isControlGroupVehicle(int referenceVehicleID, int testVehicleID)
 }
 
 // record travel time, path length and OD
-void recordAllVehicleInfo(A2SimVehicle *vehicle)
+void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 {
 
 
@@ -314,41 +323,51 @@ void recordAllVehicleInfo(A2SimVehicle *vehicle)
 
 void recordOptVehicleTravelTime(double currTime)
 {
-	if (optVehPathInfo.entryTime == 0)
-		optVehPathInfo.entryTime = currTime;
-	if (optVehPathInfo.exitTime < currTime)
-		optVehPathInfo.exitTime = currTime;
-	if (optVehPathInfo.exitTime - optVehPathInfo.entryTime > optVehPathInfo.totalTravelTime)
-		optVehPathInfo.totalTravelTime = optVehPathInfo.exitTime - optVehPathInfo.entryTime;
+	if (optVehDataSet.entryTime == 0)
+		optVehDataSet.entryTime = currTime;
+	if (optVehDataSet.exitTime < currTime)
+		optVehDataSet.exitTime = currTime;
+	if (optVehDataSet.exitTime - optVehDataSet.entryTime > optVehDataSet.totalTravelTime)
+		optVehDataSet.totalTravelTime = optVehDataSet.exitTime - optVehDataSet.entryTime;
 
 }
 void recordOptVehiclePathLength(int currSectionID)
 {
 	// record path length
-	if (currSectionID != optVehPathInfo.preSectionID)
+	if (currSectionID != optVehDataSet.preSectionID)
 	{
 		A2KSectionInf sectionInfo;
 		sectionInfo = AKIInfNetGetSectionANGInf(currSectionID);
 
-		optVehPathInfo.totalTravelPathLength += sectionInfo.length;
-		optVehPathInfo.preSectionID = currSectionID;
+		optVehDataSet.totalTravelPathLength += sectionInfo.length;
+		optVehDataSet.preSectionID = currSectionID;
 	}
 
 }
 void recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 {
 	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getNumberOfLanesInCurrentSection());
-	if (optVehPathInfo.preLane != currAbsoluteLaneID)
+	if (optVehDataSet.preLane != currAbsoluteLaneID)
 	{
-		++optVehPathInfo.totalLaneChangeTimes;
-		optVehPathInfo.laneChangeDetailSet[optVehPathInfo.totalLaneChangeTimes].occurenceVehID = vehicle->getId();
-		optVehPathInfo.laneChangeDetailSet[optVehPathInfo.totalLaneChangeTimes].occurrenceTime = AKIGetCurrentSimulationTime();
-		optVehPathInfo.laneChangeDetailSet[optVehPathInfo.totalLaneChangeTimes].occurrencePosition = vehicle->getPosition(0);
-		optVehPathInfo.laneChangeDetailSet[optVehPathInfo.totalLaneChangeTimes].occurrenceSection = vehicle->getIdCurrentSection();
-		optVehPathInfo.laneChangeDetailSet[optVehPathInfo.totalLaneChangeTimes].preLane = optVehPathInfo.preLane;
-		optVehPathInfo.laneChangeDetailSet[optVehPathInfo.totalLaneChangeTimes].folLane = currAbsoluteLaneID;
-		optVehPathInfo.preLane = currAbsoluteLaneID;
+		++optVehDataSet.totalLaneChangeTimes;
+		optVehDataSet.laneChangeDetailSet[optVehDataSet.totalLaneChangeTimes].occurenceVehID = vehicle->getId();
+		optVehDataSet.laneChangeDetailSet[optVehDataSet.totalLaneChangeTimes].occurrenceTime = AKIGetCurrentSimulationTime();
+		optVehDataSet.laneChangeDetailSet[optVehDataSet.totalLaneChangeTimes].occurrencePosition = vehicle->getPosition(0);
+		optVehDataSet.laneChangeDetailSet[optVehDataSet.totalLaneChangeTimes].occurrenceSection = vehicle->getIdCurrentSection();
+		optVehDataSet.laneChangeDetailSet[optVehDataSet.totalLaneChangeTimes].preLane = optVehDataSet.preLane;
+		optVehDataSet.laneChangeDetailSet[optVehDataSet.totalLaneChangeTimes].folLane = currAbsoluteLaneID;
+		optVehDataSet.preLane = currAbsoluteLaneID;
 	}
+}
+
+void recordOptVehiclTrajectory(A2SimVehicle *vehicle,double currentTime)
+{
+	TrajectoryData trajectoryDataPoint;
+	trajectoryDataPoint.time = currentTime;
+	double xback_temp = 0;
+	double yback_temp = 0;
+	vehicle->getCoordinates(trajectoryDataPoint.coordinateX, trajectoryDataPoint.coordinateY, xback_temp, yback_temp);
+	optVehDataSet.trajectoryDataSet.push_back(trajectoryDataPoint);
 }
 
 
@@ -374,7 +393,7 @@ void inputParameterSetFromAFT()
 
 
 		char msg[150];
-		sprintf_s(msg, "MOBIL Parameters loaded. (P,T)=(%f,%f)", parameterSet[363], parameterSet[364]);
+		sprintf_s(msg, "SmartVehID=%d MOBIL Parameters loaded. (P,T)=(%f,%f)", optimiazedVehID, parameterSet[363], parameterSet[364]);
 		AKIPrintString(msg);
 
 		inPutParaRunTimes = 1;
@@ -466,11 +485,40 @@ void outPutImpactedVehicleIDSet()
 	outPutImpactedVehIDFullPath = DATAPATH + outPutImpactedVehIDFileName;
 	ofstream outPutImpactedVehID;
 	outPutImpactedVehID.open(outPutImpactedVehIDFullPath, ios::trunc);
-	for (auto impactedVehIDIter = controlGroupVehIDSet.begin(); impactedVehIDIter != controlGroupVehIDSet.end(); ++impactedVehIDIter)
+	for (auto impactedVehIDIter = impactedVehIDSet.begin(); impactedVehIDIter != impactedVehIDSet.end(); ++impactedVehIDIter)
 	{
 		outPutImpactedVehID << *impactedVehIDIter << "\t";
 	}
 	outPutImpactedVehID.close();
+
+}
+
+
+void outPutOptVehTrajectoryDataSet()
+{
+	string outPutOptVehTrajectoryFullPath;
+	string outPutOptVehTrajectoryFileName = "OptVehTrajectoryDataSet.dat";
+	outPutOptVehTrajectoryFullPath = DATAPATH + outPutOptVehTrajectoryFileName;
+	ofstream outPutOptVehTrajectory;
+	outPutOptVehTrajectory.open(outPutOptVehTrajectoryFullPath, ios::trunc);
+
+	outPutOptVehTrajectory 
+		<< "Time"<< "\t"
+		<< "Position" << "\t"
+		<< "Speed" 
+		<< endl;
+
+
+	for (auto optVehTrajectoryIter : optVehDataSet.trajectoryDataSet)
+	{
+		outPutOptVehTrajectory
+			<< optVehTrajectoryIter.time << "\t"
+			<< sqrt(optVehTrajectoryIter.coordinateX*optVehTrajectoryIter.coordinateX + optVehTrajectoryIter.coordinateY*optVehTrajectoryIter.coordinateY) << "\t"
+			<< optVehTrajectoryIter.speed
+			<< endl;
+		
+	}
+	outPutOptVehTrajectory.close();
 
 }
 
@@ -483,22 +531,22 @@ void outPutOptVehLaneChangingDetials()
 	ofstream outPutLaneChanging;
 	outPutLaneChanging.open(outPutLaneChangingFullPath, ios::app);
 	outPutLaneChanging
-		<< "TotalLaneChangingTimes\t" << optVehPathInfo.totalLaneChangeTimes << "\n"
+		<< "TotalLaneChangingTimes\t" << optVehDataSet.totalLaneChangeTimes << "\n"
 		<< "LaneChangingDetails \n"
 		<< "OccurrenceTime" << "\t" << "OccurrencePosition" << "\t" << "OccurrenceSection" << "\t" << "PreviousLane" << "\t" << "FollowingLane"
 		<< endl;
 	int iter;
-	for (iter = 1; iter <= optVehPathInfo.totalLaneChangeTimes; ++iter)
+	for (iter = 1; iter <= optVehDataSet.totalLaneChangeTimes; ++iter)
 	{
 		outPutLaneChanging
-			<< optVehPathInfo.laneChangeDetailSet[iter].occurenceVehID << "\t"
-			<< optVehPathInfo.laneChangeDetailSet[iter].occurrenceTime << "\t"
-			<< optVehPathInfo.laneChangeDetailSet[iter].occurrencePosition << "\t"
-			<< optVehPathInfo.laneChangeDetailSet[iter].occurrenceSection << "\t"
-			<< optVehPathInfo.laneChangeDetailSet[iter].preLane << "\t"
-			<< optVehPathInfo.laneChangeDetailSet[iter].folLane << "\t"
+			<< optVehDataSet.laneChangeDetailSet[iter].occurenceVehID << "\t"
+			<< optVehDataSet.laneChangeDetailSet[iter].occurrenceTime << "\t"
+			<< optVehDataSet.laneChangeDetailSet[iter].occurrencePosition << "\t"
+			<< optVehDataSet.laneChangeDetailSet[iter].occurrenceSection << "\t"
+			<< optVehDataSet.laneChangeDetailSet[iter].preLane << "\t"
+			<< optVehDataSet.laneChangeDetailSet[iter].folLane << "\t"
 			<< endl;
-		if (iter == optVehPathInfo.totalLaneChangeTimes)
+		if (iter == optVehDataSet.totalLaneChangeTimes)
 			outPutLaneChanging << endl;
 	}
 
@@ -506,22 +554,7 @@ void outPutOptVehLaneChangingDetials()
 
 }
 
-void outPutOptVehSpeed()
-{
-	string outPutSpeedFullPath;
-	string outPutSpeedFileName = "OptimizedVehicleSpeed.dat";
-	outPutSpeedFullPath = DATAPATH + outPutSpeedFileName;
-	ofstream outPutSpeed;
-	outPutSpeed.open(outPutSpeedFullPath, ios::trunc);
-	for (int speedIter = 0; optVehPathInfo.speedDataSet[speedIter].time < optVehPathInfo.exitTime; ++speedIter)
-	{
-		outPutSpeed
-			<< optVehPathInfo.speedDataSet[speedIter].time << "\t"
-			<< optVehPathInfo.speedDataSet[speedIter].speedValue
-			<< endl;
-	}
-	outPutSpeed.close();
-}
+
 
 void outPutOptVehPerformance()
 {
@@ -531,7 +564,7 @@ void outPutOptVehPerformance()
 	ofstream outPutPerformance;
 	outPutPerformance.open(outPutPerformanceFullPath, ios::trunc);
 	outPutPerformance
-		<< optVehPathInfo.totalTravelTime / optVehPathInfo.totalTravelPathLength * 1000 << endl;
+		<< optVehDataSet.totalTravelTime / optVehDataSet.totalTravelPathLength * 1000 << endl;
 	outPutPerformance.close();
 
 }
@@ -559,11 +592,11 @@ void outPutOptVehData()
 
 	outPutData
 		//<<optimiazedVehID << "\t"
-		<< optVehPathInfo.entryTime << "\t"
-		<< optVehPathInfo.exitTime << "\t"
-		<< optVehPathInfo.totalTravelTime << "\t"
-		<< optVehPathInfo.totalTravelPathLength << "\t"
-		<< optVehPathInfo.totalTravelTime / optVehPathInfo.totalTravelPathLength * 1000;
+		<< optVehDataSet.entryTime << "\t"
+		<< optVehDataSet.exitTime << "\t"
+		<< optVehDataSet.totalTravelTime << "\t"
+		<< optVehDataSet.totalTravelPathLength << "\t"
+		<< optVehDataSet.totalTravelTime / optVehDataSet.totalTravelPathLength * 1000;
 	outPutData.close();
 
 }
@@ -889,7 +922,7 @@ double behavioralModelParticular::getModifiedThreshold(A2SimVehicle* vehicle, in
 
 
 //functions for debug, test 2018-9-20 14:03:20
-void needDebugMessage(string message, double value)
+void debug_needDebugMessage(string message, double value)
 {
 	char msg[200];
 	sprintf_s(msg, "xxxxxxxxx", value);
@@ -970,12 +1003,13 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	if (vehID == optimiazedVehID)
 	{
 
-		inputParameterSetFromAFT();// input parameters to  <map>parameterSet
+		inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
 
 
 		recordOptVehicleTravelTime(currTime);
 		recordOptVehiclePathLength(currSectionID);
-
+		recordOptVehiclLaneChangingInfo(vehicle);
+		recordOptVehiclTrajectory(vehicle,currTime);
 
 
 		// if this travel is ending, then select one vehicle as optimized vehilce in the entry sections
@@ -994,7 +1028,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	//recordImpactedVehID(vehID, currTime, currSectionID);
 
-	recordAllVehicleInfo(vehicle);
+	recordAllVehicleODInfo(vehicle);
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if (outPutRunTimes == 0 && currTime > 14399)
@@ -1003,7 +1037,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		outPutOptVehPerformance();
 
-		//	outPutOptVehSpeed();
+		outPutOptVehTrajectoryDataSet();
 
 		outPutOptVehLaneChangingDetials();
 
@@ -1012,6 +1046,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		//outPutAllVehicleODInfo();
 
 		outPutControlGroupVehiclesODInfo();
+
 
 
 		outPutRunTimes = 1;
@@ -1096,7 +1131,19 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 					thresDist = 3;
 
 
-				if ((pos > 30 && currSpeed > thresCurrSpeed && diffSpeed <= thresDiffSpeed && distUp > thresDist && distDown > thresDist) || (pos > 50 && currSpeed <0.1 && diffSpeed <= thresDiffSpeed && distUp >thresDist && distDown > thresDist))
+				if (
+					(pos > 30 
+					&& currSpeed > thresCurrSpeed 
+					&& diffSpeed <= thresDiffSpeed 
+					&& distUp > thresDist 
+					&& distDown > thresDist) 
+					|| 
+					(pos > 50 
+						&& currSpeed <0.1 
+						&& diffSpeed <= thresDiffSpeed 
+						&& distUp >thresDist 
+						&& distDown > thresDist)
+					)
 
 				{
 					direction = -1;
