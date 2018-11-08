@@ -4,6 +4,7 @@
 2. 把optimized vehicle data 做成一个类，将数据与功能组织在一起，便于管理 2018-9-20 13:41:35
 2018-9-27 9:58:44已完成 VVVV 3. 使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28
 4. 写一个debug类或者一些debug函数，用于调试，摆脱传统的注释、运行部分 2018-9-20 13:55:25
+5. 2018-11-7 11:16:30 OPTvehicle数据结构中 pathlength有耦合
 */
 
 #include "behavioralModelParticular.h"
@@ -28,6 +29,8 @@ using namespace std;
 #define DBL_MAX 1.7976931348623158e+308 
 #define DATAPATH "D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\"
 #define AFTPATH "D:\\Aimsun 8.1\\"
+
+bool needTestMsg = false;
 
 bool useIDM = true;
 bool useHeuristicLaneChangeModel = true;
@@ -80,6 +83,7 @@ struct TrajectoryData {
 	double time;
 	double coordinateX;
 	double coordinateY;
+	double pathLengthPerSecond;
 	double speed;
 };
 struct VehiclePathInfo {
@@ -345,6 +349,7 @@ void recordOptVehiclePathLength(int currSectionID)
 		optVehDataSet.preSectionID = currSectionID;
 	}
 
+
 }
 void recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 {
@@ -366,11 +371,25 @@ void recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 	}
 }
 
-void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime)
+void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int currSectionID)
 {
+
+	A2KSectionInf sectionInfo;
+	sectionInfo = AKIInfNetGetSectionANGInf(currSectionID);
+
 	TrajectoryData trajectoryDataPoint;
 	trajectoryDataPoint.time = currentTime;
 	trajectoryDataPoint.speed = vehicle->getSpeed(0);
+	trajectoryDataPoint.pathLengthPerSecond = optVehDataSet.totalTravelPathLength - sectionInfo.length + vehicle->getPosition(0); //Coupling with the recordpathlength, so the sequence of invoking should be noticed.
+
+
+	if (needTestMsg && currentTime > 5740 && currentTime < 5760)
+	{
+		char msg[200];
+		sprintf_s(msg, "%f,%f,%f,%d,%d", optVehDataSet.totalTravelPathLength, vehicle->getPosition(0), sectionInfo.length, sectionInfo.id, currSectionID);
+		AKIPrintString(msg);
+	}
+
 	double xback_temp = 0;
 	double yback_temp = 0;
 	vehicle->getCoordinates(trajectoryDataPoint.coordinateX, trajectoryDataPoint.coordinateY, xback_temp, yback_temp);
@@ -512,7 +531,8 @@ void outPutOptVehTrajectoryDataSet()
 	outPutOptVehTrajectory
 		<< "Time" << "\t"
 		<< "Position" << "\t"
-		<< "Speed"
+		<< "Speed" << "\t"
+		<< "PathLength"
 		<< endl;
 
 
@@ -521,7 +541,8 @@ void outPutOptVehTrajectoryDataSet()
 		outPutOptVehTrajectory
 			<< optVehTrajectoryIter.time << "\t"
 			<< sqrt(optVehTrajectoryIter.coordinateX*optVehTrajectoryIter.coordinateX + optVehTrajectoryIter.coordinateY*optVehTrajectoryIter.coordinateY) << "\t"
-			<< optVehTrajectoryIter.speed
+			<< optVehTrajectoryIter.speed << "\t"
+			<< optVehTrajectoryIter.pathLengthPerSecond
 			<< endl;
 
 	}
@@ -938,7 +959,7 @@ double behavioralModelParticular::getModifiedThreshold(A2SimVehicle* vehicle, in
 
 
 //functions for debug, test 2018-9-20 14:03:20
-void debug_needDebugMessage(string message, double value)
+void debug_needDebugMessage(char* message, double value)
 {
 	char msg[200];
 	sprintf_s(msg, "xxxxxxxxx", value);
@@ -1025,7 +1046,32 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		recordOptVehicleTravelTime(currTime);
 		recordOptVehiclePathLength(currSectionID);
 		recordOptVehiclLaneChangingInfo(vehicle);
-		recordOptVehiclTrajectory(vehicle, currTime);
+		recordOptVehiclTrajectory(vehicle, currTime, currSectionID);
+
+
+		/******TEST*********/
+		if (needTestMsg &&
+			(currSectionID == 949
+				|| currSectionID == 386
+				|| currSectionID == 967
+				|| currSectionID == 395
+				|| currSectionID == 935
+				|| currSectionID == 395
+				|| currSectionID == 935
+				|| currSectionID == 404
+				|| currSectionID == 967
+				|| currSectionID == 406
+				|| currSectionID == 414
+				|| currSectionID == 986
+				))
+		{
+			double temp_xfront, temp_yfront, temp_xback, temp_yback;
+			vehicle->getCoordinates(temp_xfront, temp_yfront, temp_xback, temp_yback);
+			char msg[200];
+			sprintf_s(msg, "Now Section %d PositionXY=%f", currSectionID, sqrt(temp_xfront*temp_xfront + temp_yfront*temp_yfront));
+			AKIPrintString(msg);
+		}
+		/******TEST*********/
 
 
 		// if this travel is ending, then select one vehicle as optimized vehilce in the entry sections
@@ -2572,8 +2618,8 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 	*/
 
 	/************ TEST OUTPUT ************/
-	bool needTest = true;
-	if (needTest)
+
+	if (needTestMsg)
 	{
 		double currentTime = AKIGetCurrentSimulationTime();
 		int id_veh = vehicle->getId();//vehicle id
