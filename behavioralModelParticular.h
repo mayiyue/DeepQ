@@ -24,6 +24,7 @@ private:
 
 public:
 	
+	
 	behavioralModelParticular();
 	~behavioralModelParticular();
 	
@@ -66,6 +67,7 @@ public:
 
 	double getModifiedThreshold(A2SimVehicle * vehicle, int targetLane);
 
+	void outPutAccelerationDeviation(A2SimVehicle * currentVehicle);
 
 };
 

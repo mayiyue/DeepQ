@@ -4,7 +4,7 @@
 2. 把optimized vehicle data 做成一个类，将数据与功能组织在一起，便于管理 2018-9-20 13:41:35
 2018-9-27 9:58:44已完成 VVVV 3. 使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28
 4. 写一个debug类或者一些debug函数，用于调试，摆脱传统的注释、运行部分 2018-9-20 13:55:25
-5. 2018-11-7 11:16:30 OPTvehicle数据结构中 pathlength有耦合
+5. 2018-11-7 12:16:30 OPTvehicle数据结构中 pathlength有耦合
 */
 
 #include "behavioralModelParticular.h"
@@ -48,12 +48,15 @@ double const upLimitOfACCTimeGap = 0.7;
 
 // for Optimizing Working
 double optimizedPolitenessFactor, optimizedThreshold, optimizedSafeFactor; // for MOBIL p , a_th, b_safe
+double const penetrationOfSmartVehicle = 0;
+
+
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = 4000;//4000 // work only when   useIterationOptimization = false
+int optimiazedVehID = 5070;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
 
@@ -369,6 +372,181 @@ void recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 		optVehDataSet.laneChangeDetailSet[optVehDataSet.totalLaneChangeTimes].folLane = currAbsoluteLaneID;
 		optVehDataSet.preLane = currAbsoluteLaneID;
 	}
+}
+void behavioralModelParticular::outPutAccelerationDeviation(A2SimVehicle * currentVehicle)
+{
+
+
+
+
+	A2SimVehicle * leaders_right[12] = { 0 };
+	A2SimVehicle * leaders_current[12] = { 0 };
+	A2SimVehicle * leaders_left[12] = { 0 };
+
+	double accelerations_right[12] = { 0 };
+	double accelerations_current[12] = { 0 };
+	double accelerations_left[12] = { 0 };
+
+	double sum_acceleration_right = 0;
+	double sum_acceleration_current = 0;
+	double sum_acceleration_left = 0;
+
+	double mean_right = 0;
+	double mean_current = 0;
+	double mean_left = 0;
+
+	double standardDeviation_right = 0;
+	double standardDeviation_current = 0;
+	double standardDeviation_left = 0;
+
+
+
+
+
+	A2SimVehicle *pVehLeftDw = NULL;
+	A2SimVehicle *pVehLeftUp = NULL;
+	A2SimVehicle *pVehRightDw = NULL;
+	A2SimVehicle *pVehRightUp = NULL;
+	A2SimVehicle *pVehCurUp = NULL;
+	A2SimVehicle *pVehCurDw = NULL;
+
+	double shiftCurUp = 0, shiftCurDw = 0;
+	double ShiftUpLeft = 0, ShiftDwLeft = 0;
+	double ShiftUpRight = 0, ShiftDwRight = 0;
+
+	leaders_current[0] = currentVehicle;
+	leaders_left[0] = currentVehicle;
+	leaders_right[0] = currentVehicle;
+
+
+	//get the first leader in current lane
+	currentVehicle->getUpDown(0, currentVehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
+
+	//get the first leader in left lane
+	currentVehicle->getUpDown(-1, currentVehicle->getPosition(0), pVehLeftUp, ShiftUpLeft, pVehLeftDw, ShiftDwLeft);
+
+	//get the first leader in right lane
+	currentVehicle->getUpDown(1, currentVehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
+
+	leaders_current[1] = pVehCurDw;
+	leaders_right[1] = pVehRightDw;
+	leaders_left[1] = pVehLeftDw;
+
+
+
+
+	// 11 leaders for each lane, 1-11, 10 accelerations 
+	for (int i = 1; i <= 10; ++i)
+	{
+
+
+		A2SimVehicle *pVehLeftDw = NULL;
+		A2SimVehicle *pVehLeftUp = NULL;
+		A2SimVehicle *pVehRightDw = NULL;
+		A2SimVehicle *pVehRightUp = NULL;
+		A2SimVehicle *pVehCurUp = NULL;
+		A2SimVehicle *pVehCurDw = NULL;
+
+		double shiftCurUp = 0, shiftCurDw = 0;
+		double ShiftUpLeft = 0, ShiftDwLeft = 0;
+		double ShiftUpRight = 0, ShiftDwRight = 0;
+
+
+		// if the leader does not exist, the pointer will be NULL, the acceleration will be 0
+		// get the next leader in current lane, 
+		if (leaders_current[i] != NULL)
+		{
+			leaders_current[i]->getUpDown(0, leaders_current[i]->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
+		}
+		// get the next leader in left lane
+		if (leaders_left[i] != NULL)
+		{
+			leaders_left[i]->getUpDown(-1, leaders_left[i]->getPosition(0), pVehLeftUp, ShiftUpLeft, pVehLeftDw, ShiftDwLeft);
+		}
+		// get the next leader in right lane
+		if (leaders_right[i] != NULL)
+		{
+			leaders_right[i]->getUpDown(1, leaders_right[i]->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
+		}
+
+
+		if (pVehCurDw != NULL)
+		{
+			leaders_current[i + 1] = pVehCurDw;
+			accelerations_current[i] = get_IDM_acceleration(leaders_current[i], leaders_current[i + 1]);
+		}
+
+		if (pVehLeftDw != NULL)
+		{
+			leaders_left[i + 1] = pVehLeftDw;
+			accelerations_left[i] = get_IDM_acceleration(leaders_left[i], leaders_left[i + 1]);
+		}
+
+		if (pVehRightDw != NULL)
+		{
+			leaders_right[i + 1] = pVehRightDw;
+			accelerations_right[i] = get_IDM_acceleration(leaders_right[i], leaders_right[i + 1]);
+		}
+
+
+
+	}
+	for (int i = 1; i <= 10; ++i)
+	{
+		sum_acceleration_current += accelerations_current[i];
+		sum_acceleration_left += accelerations_left[i];
+		sum_acceleration_right += accelerations_right[i];
+	}
+
+	mean_current = sum_acceleration_current / 10;
+	mean_left = sum_acceleration_left / 10;
+	mean_right = sum_acceleration_right / 10;
+
+
+	double deviationSUM_current = 0;
+	double deviationSUM_left = 0;
+	double deviationSUM_right = 0;
+
+	for (int i = 1; i <= 10; ++i)
+	{
+		deviationSUM_current += (accelerations_current[i] - mean_current)*(accelerations_current[i] - mean_current);
+		deviationSUM_right += (accelerations_right[i] - mean_right)*(accelerations_right[i] - mean_right);
+		deviationSUM_left += (accelerations_left[i] - mean_left)*(accelerations_left[i] - mean_left);
+	}
+
+
+	standardDeviation_current = sqrt(0.1 * deviationSUM_current);
+	standardDeviation_right = sqrt(0.1 * deviationSUM_right);
+	standardDeviation_left = sqrt(0.1 * deviationSUM_left);
+
+	double diff_sd_right = 0;
+	double diff_mean_right = 0;
+	double diff_sd_left = 0;
+	double diff_mean_left = 0;
+
+	diff_sd_right = standardDeviation_right - standardDeviation_current;
+	diff_sd_left = standardDeviation_left - standardDeviation_current;
+
+	diff_mean_right = mean_right - mean_current;
+	diff_mean_left = mean_left - mean_current;
+
+
+	string outPutSDInfoFullPath;
+	string outPutSDInfoFileName = "ACCELERATION_SDInfo.dat";
+	outPutSDInfoFullPath = DATAPATH + outPutSDInfoFileName;
+	ofstream outPutSDInfo;
+	outPutSDInfo.open(outPutSDInfoFullPath, ios::app);
+	 
+	outPutSDInfo
+		<< diff_mean_left << "\t"
+		<< diff_sd_left << "\n"
+		<< diff_mean_right << "\t"
+		<< diff_sd_right << endl;
+	 
+	
+	outPutSDInfo.close();
+
+
 }
 
 void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int currSectionID)
@@ -1046,31 +1224,31 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		recordOptVehicleTravelTime(currTime);
 		recordOptVehiclePathLength(currSectionID);
 		recordOptVehiclLaneChangingInfo(vehicle);
-		recordOptVehiclTrajectory(vehicle, currTime, currSectionID);
+		//recordOptVehiclTrajectory(vehicle, currTime, currSectionID);
 
 
-		/******TEST*********/
-		if (needTestMsg &&
-			(currSectionID == 949
-				|| currSectionID == 386
-				|| currSectionID == 967
-				|| currSectionID == 395
-				|| currSectionID == 935
-				|| currSectionID == 395
-				|| currSectionID == 935
-				|| currSectionID == 404
-				|| currSectionID == 967
-				|| currSectionID == 406
-				|| currSectionID == 414
-				|| currSectionID == 986
-				))
-		{
-			double temp_xfront, temp_yfront, temp_xback, temp_yback;
-			vehicle->getCoordinates(temp_xfront, temp_yfront, temp_xback, temp_yback);
-			char msg[200];
-			sprintf_s(msg, "Now Section %d PositionXY=%f", currSectionID, sqrt(temp_xfront*temp_xfront + temp_yfront*temp_yfront));
-			AKIPrintString(msg);
-		}
+		/******TEST for locating special position*********/
+		//if (needTestMsg &&
+		//	(currSectionID == 949
+		//		|| currSectionID == 386
+		//		|| currSectionID == 967
+		//		|| currSectionID == 395
+		//		|| currSectionID == 935
+		//		|| currSectionID == 395
+		//		|| currSectionID == 935
+		//		|| currSectionID == 404
+		//		|| currSectionID == 967
+		//		|| currSectionID == 406
+		//		|| currSectionID == 414
+		//		|| currSectionID == 986
+		//		))
+		//{
+		//	double temp_xfront, temp_yfront, temp_xback, temp_yback;
+		//	vehicle->getCoordinates(temp_xfront, temp_yfront, temp_xback, temp_yback);
+		//	char msg[200];
+		//	sprintf_s(msg, "Now Section %d PositionXY=%f", currSectionID, sqrt(temp_xfront*temp_xfront + temp_yfront*temp_yfront));
+		//	AKIPrintString(msg);
+		//}
 		/******TEST*********/
 
 
@@ -1092,6 +1270,12 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	recordAllVehicleODInfo(vehicle);
 
+	// sample rate =10%
+	if (vehicle->getId() % 10 == 0)
+	{
+		outPutAccelerationDeviation(vehicle);
+	}
+
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if (outPutRunTimes == 0 && currTime > 14399)
 	{
@@ -1099,7 +1283,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		outPutOptVehPerformance();
 
-		outPutOptVehTrajectoryDataSet();
+		//outPutOptVehTrajectoryDataSet();
 
 		outPutOptVehLaneChangingDetials();
 

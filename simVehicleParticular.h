@@ -11,7 +11,8 @@ private:
 	float newAttribute;
 
 	bool isACC;
-	bool isOptimizedVehicle;
+	
+	bool isSmartVehicle;
 	double aCCTimeGap;
 public:
 	

@@ -2,7 +2,7 @@
 
 simVehicleParticular:: simVehicleParticular ( void *handlerVehicle, unsigned short idhandler,bool isFictitiousVeh ) : A2SimVehicle( handlerVehicle, idhandler,isFictitiousVeh )
 {
-	isOptimizedVehicle = false;
+	isSmartVehicle = false;
 	isACC = false;
 	
 }
@@ -31,9 +31,9 @@ void simVehicleParticular::setIsACC(bool setValue)
 
 const bool simVehicleParticular::getIsOptimizedVehicle() const
 {
-	return isOptimizedVehicle;
+	return isSmartVehicle;
 }
 void simVehicleParticular::setIsOptimizedVehicle(bool setValue)
 {
-	isOptimizedVehicle = setValue;
+	isSmartVehicle = setValue;
 }
