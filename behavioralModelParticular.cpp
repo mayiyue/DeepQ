@@ -48,7 +48,23 @@ double const upLimitOfACCTimeGap = 0.7;
 
 // for Optimizing Working
 double optimizedPolitenessFactor, optimizedThreshold, optimizedSafeFactor; // for MOBIL p , a_th, b_safe
-double const penetrationOfSmartVehicle = 0;
+double const penetrationOfSmartVehicles = 0.01;
+int timeInverval = 450; // 450 sec = 8 mins, 8 x 30 =240 mins
+
+// q-learning
+struct Q_LearningParameters
+{
+	float epsilon;
+	float learning_rate_r;
+	float alpha;
+
+	// 6^10*3 float ， 0.72 GB memory cost
+	// [3] 0 current 1 left 2 right
+	float q_table[6][6][6][6][6][6][6][6][6][4][3];
+
+
+
+}q_learning = { 0.95,0.8,0.01,{0} };
 
 
 
@@ -169,6 +185,398 @@ int lcProfitCloseRunTime = 0;
 
 /*************************** Function Declaration (custom) **************************/
 
+int smartVehicleNum_interval_temp = 0;
+int smartVehicleNum_entrySection_temp[5] = { 0 };
+int readSmartVehicleDemandRumTimes = 0;
+int smartVehicleDemand[5][240] = { 0 };
+void readSmartVehicleDemand()
+{
+	ifstream readSmartVehicleDemandFile;
+	readSmartVehicleDemandFile.open("D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\InputData\\SmartVehicleDemand.dat", ios::in);
+	for (int inputSection = 0; inputSection <= 5 - 1; ++inputSection)
+	{
+		for (int timeInterval = 0; timeInterval <= (240 / 30) - 1; ++timeInterval)
+		{
+			readSmartVehicleDemandFile >> smartVehicleDemand[inputSection][timeInterval];
+		}
+	}
+
+
+}
+
+
+int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
+{
+
+	int action = 0;
+	int stateID = getStateID_QLearning(vehicle);
+	if (AKIGetRandomNumber() < q_learning.epsilon)
+	{
+		action = getMaxQValueAction(stateID, vehicle);
+	}
+	else
+	{
+		action = getAvailableActionRandomly_Qlearning(stateID, vehicle);
+	}
+
+
+
+	return action;
+}
+
+int convertQActionToDirection(int Qaction)
+{
+	int direction = 0;
+	switch (Qaction)
+	{
+	case 0: direction = 0; break;
+	case 1: direction = -1; break;
+	case 2: direction = 1; break;
+	default: direction = 0;
+		break;
+	}
+	return direction;
+}
+
+int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehicle)
+{
+
+	int curLane = vehicle->getIdCurrentLane();
+	int numSect = vehicle->getIdCurrentSection();
+	int maxLanes = vehicle->getNumberOfLanesInCurrentSection();
+
+
+	int direction = 0;
+
+	double profit_to_left = 0, profit_to_right = 0;
+
+
+
+	double	ac_Left_LC = 0;			//ac*	//turn left
+	double	ac_Left_NOLC = 0;		//ac	//turn left
+	double	an_Left_LC = 0;			//an*	//turn left
+	double	an_Left_NOLC = 0;		//an	//turn left
+	double	ao_Left_LC = 0;			//ao*	//turn left
+	double	ao_Left_NOLC = 0;		//ao	//turn left
+
+
+	double	ac_Right_LC = 0;			//ac*	//turn Right
+	double	ac_Right_NOLC = 0;			//ac	//turn Right
+	double	an_Right_LC = 0;			//an*	//turn Right
+	double	an_Right_NOLC = 0;			//an	//turn Right
+	double	ao_Right_LC = 0;			//ao*	//turn Right
+	double	ao_Right_NOLC = 0;			//ao	//turn right
+
+
+	double XPosTargetlaneLeft = 0;
+	double XPosTargetlaneRight = 0;
+
+	A2SimVehicle *pVehLeftDw = NULL;
+	A2SimVehicle *pVehLeftUp = NULL;
+	A2SimVehicle *pVehRightDw = NULL;
+	A2SimVehicle *pVehRightUp = NULL;
+	A2SimVehicle *pVehCurUp = NULL;
+	A2SimVehicle *pVehCurDw = NULL;
+
+	double shiftCurUp = 0, shiftCurDw = 0;
+	double ShiftUpLeft = 0, ShiftDwLeft = 0;
+	double ShiftUpRight = 0, ShiftDwRight = 0;
+
+
+	/*******************************************************************/
+	/**********************MOBIL CRITERION*****************************/
+
+
+	//get current lane follower and leader
+	vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
+
+	//get left lane follower and leader
+	vehicle->getUpDown(-1, vehicle->getPosition(0), pVehLeftUp, ShiftUpLeft, pVehLeftDw, ShiftDwLeft);
+
+	//get right lane follower and leader
+	vehicle->getUpDown(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
+
+
+	/**********************LEFT Calculation*********************************/
+	if (curLane < maxLanes)
+	{
+		ac_Left_LC = get_IDM_acceleration(vehicle, pVehLeftDw);//ac*
+
+		ac_Left_NOLC = get_IDM_acceleration(vehicle, pVehCurDw); // ac
+
+		an_Left_LC = get_IDM_acceleration(pVehLeftUp, vehicle);	//an*
+
+		an_Left_NOLC = get_IDM_acceleration(pVehLeftUp, pVehLeftDw);//an
+
+		ao_Left_LC = get_IDM_acceleration(pVehCurUp, pVehCurDw); //a0*
+
+		ao_Left_NOLC = get_IDM_acceleration(pVehCurUp, vehicle);  //a0
+	}
+	/**********************RIGHT Calculation*********************************/
+	if (curLane > 1)
+	{
+		ac_Right_LC = get_IDM_acceleration(vehicle, pVehRightDw);  //ac*
+
+		ac_Right_NOLC = get_IDM_acceleration(vehicle, pVehCurDw);    // ac
+
+		an_Right_LC = get_IDM_acceleration(pVehRightUp, vehicle); //an*
+
+		an_Right_NOLC = get_IDM_acceleration(pVehRightUp, pVehRightDw);  //an
+
+		ao_Right_LC = get_IDM_acceleration(pVehCurUp, pVehCurDw); //a0*
+
+		ao_Right_NOLC = get_IDM_acceleration(pVehCurUp, vehicle);  //a0
+	}
+
+
+	double diff_ac_left = 0;
+	double diff_ao = 0;
+	double diff_an_left = 0;
+	double diff_ac_right = 0;
+	double diff_an_right = 0;
+
+
+	double diff_mean_left = 0;
+	double diff_mean_right = 0;
+
+	double diff_sd_left = 0;
+	double diff_sd_right = 0;
+
+
+	diff_ac_left = ac_Left_LC - ac_Left_NOLC;
+	diff_ao = ao_Left_LC - ao_Left_NOLC; // ao_Left_LC=ao_Right_LC, so there is only one diff_ao
+	diff_an_left = an_Left_LC - an_Left_NOLC;
+	diff_ac_right = ac_Right_LC - ac_Right_NOLC;
+	diff_an_right = an_Right_LC - an_Right_NOLC;
+	getLeadersAccelerationsDistributionDifference(vehicle, diff_mean_left, diff_sd_left, diff_mean_right, diff_sd_right);
+
+	int  state_diff_ac_left = 0;
+	int  state_diff_ao = 0;
+	int  state_diff_an_left = 0;
+	int  state_diff_ac_right = 0;
+	int  state_diff_an_right = 0;
+
+
+	int state_diff_mean_left = 0;
+	int state_diff_mean_right = 0;
+
+
+	int state_diff_sd_left = 0;
+	int state_diff_sd_right = 0;
+
+
+	state_diff_ac_left = getDiscretedState(diff_ac_left);
+	state_diff_ao = getDiscretedState(diff_ao);
+	state_diff_an_left = getDiscretedState(diff_an_left);
+
+	state_diff_ac_right = getDiscretedState(diff_ac_right);
+
+	state_diff_an_right = getDiscretedState(diff_an_right);
+
+	state_diff_mean_left = getDiscretedState(state_diff_ac_left);
+	state_diff_mean_right = getDiscretedState(state_diff_mean_right);
+
+
+	state_diff_sd_left = getDiscretedState(state_diff_sd_left);
+	state_diff_sd_right = getDiscretedState(state_diff_sd_right);
+
+	int state_current_lane_abs = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
+
+	unsigned long int stateID = 0;
+
+
+
+	stateID =
+		state_diff_ac_left * 10e10
+		+ state_diff_ac_right * 10e9
+		+ state_diff_an_left* 10e8
+		+ state_diff_ao  * 10e7
+		+ state_diff_an_right * 10e6
+		+ state_diff_mean_left* 10e5
+		+ state_diff_sd_left *10e4
+		+ state_diff_mean_right *10e3
+		+ state_diff_sd_right *10e2
+		+ state_current_lane_abs * 1;
+
+	return stateID;
+}
+
+//0~5, 6 states for each 
+int getDiscretedState(int diff_value)
+{
+	int state = 0;
+	if (diff_value < -1)
+		state = 0;
+	else if (diff_value > -1 && diff_value < -0.5)
+		state = 1;
+	else if (diff_value > -0.5 && diff_value < 0)
+		state = 2;
+	else if (diff_value > 0 && diff_value < 0.5)
+		state = 3;
+	else if (diff_value > 0.5&& diff_value < 1)
+		state = 4;
+	else if (diff_value > 1)
+		state = 5;
+
+	return state;
+}
+
+int behavioralModelParticular::getMaxQValueAction(int stateID, A2SimVehicle * vehicle)
+{
+	int action = 0;
+	int stateCode[10] = { 0 };
+	int curlane = vehicle->getIdCurrentLane();
+	int maxlane = vehicle->getNumberOfLanesInCurrentSection();
+
+	for (int i = 0; i <= 9; ++i)
+	{
+		stateCode[i] = stateID / int(pow(10, i)) % 10;
+	}
+
+	float currentDirectionQuality = q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
+	float leftDirectionqQuality = q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
+	float rightDirectionqQuality = q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
+	if (curlane < maxlane && (leftDirectionqQuality > currentDirectionQuality&&leftDirectionqQuality >= rightDirectionqQuality))
+	{
+		return 1; // turn left
+	}
+	else if (curlane > 1 && (rightDirectionqQuality > currentDirectionQuality&&rightDirectionqQuality > leftDirectionqQuality))
+	{
+		return 2; // turn right
+	}
+	else
+	{
+		return 0; // do not change lane
+	}
+
+}
+
+int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID, A2SimVehicle* vehicle)
+{
+
+	int curLane = vehicle->getIdCurrentLane();
+
+	int maxLanes = vehicle->getNumberOfLanesInCurrentSection();
+
+	float randNUM = AKIGetRandomNumber();
+	if (curLane <= maxLanes - 1 && curLane > 1)
+	{
+		if (randNUM < 0.33333)
+		{
+			return 2; // right
+		}
+		else if (randNUM < 0.66666)
+		{
+			return 1; // left
+		}
+		else
+		{
+			return 0; // current
+		}
+	}
+	else if (curLane == 1 && maxLanes > 1)
+	{
+		if (randNUM < 0.5)
+		{
+			return 0; // current
+		}
+		else
+		{
+			return 1; // left
+		}
+	}
+	else if (curLane == maxLanes)
+	{
+		if (randNUM < 0.5)
+		{
+			return 0; // current
+		}
+		else
+		{
+			return 2; // right
+		}
+	}
+}
+
+int getNextStateID_Qlearning(A2SimVehicle * currentVehicle, int action)
+{
+
+
+}
+bool updateQTable(int stateID, int action)
+{
+	int stateCode[10] = { 0 };
+	for (int i = 0; i <= 9; ++i)
+	{
+		stateCode[i] = stateID / int(pow(10, i)) % 10;
+
+	}
+
+	int next_stateID = 0;
+	int direction = 0;
+
+	direction = convertQActionToDirection(direction);
+	getNextStateID_Qlearning(vehicle)
+
+
+
+
+
+	q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+		=
+		q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+		+ q_learning.alpha*(
+			rewardQLearning(stateID, action)
+			+ q_learning.learning_rate_r * maxQActionValueForState(next_stateID)
+			- q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+			);
+
+
+}
+float rewardQLearning(int stateID, int action)
+{
+	float reward = 0;
+	int stateCode[10] = { 0 };
+	for (int i = 0; i <= 9; ++i)
+	{
+		stateCode[i] = stateID / int(pow(10, i)) % 10;
+
+	}
+	if (convertQActionToDirection(action) == -1)
+	{
+		reward = stateCode[8]; // state_diff_ac_left
+	}
+	else if (convertQActionToDirection(action) == 1)
+	{
+		reward = stateCode[9]; // state_diff_ac_right
+	}
+	else if (convertQActionToDirection(action) == 0)
+	{
+		reward = 0;
+	}
+}
+float maxQActionValueForState(int stateID)
+{
+	int stateCode[10] = { 0 };
+	for (int i = 0; i <= 9; ++i)
+	{
+		stateCode[i] = stateID / int(pow(10, i)) % 10;
+	}
+	float actionQValues[3] = {
+		q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0],
+		q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1],
+		q_learning.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2]
+	};
+
+	float max = actionQValues[0];
+	if (max < actionQValues[1])
+		max = actionQValues[1];
+	if (max < actionQValues[2])
+		max = actionQValues[2];
+	return max;
+
+}
+
 // main sections mean that they are not turn, node, on/off-ramp or inputflow section 
 bool isMainSection(int sectionID) //all sections on the mainroad
 {
@@ -249,18 +657,18 @@ bool isExitSection(int sectionID)
 
 }
 
-bool isEntrySection(int sectionID)
+// if it's not a entry section, return -1, else return sequence 
+int getEntrySectionSequence(int sectionID)
 {
 	switch (sectionID)
 	{
-	case 671:
-	case 664:
-	case 670:
-	case 928:
-	case 932:
-		return true;
+	case 671: return 1;
+	case 664: return 2;
+	case 670: return 3;
+	case 928: return 4;
+	case 932: return 5;
 	default:
-		return false;
+		return -1;
 	}
 
 }
@@ -317,7 +725,7 @@ void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 
 
 	// record OD 
-	if (isEntrySection(currSectionID))
+	if (getEntrySectionSequence(currSectionID) != -1)
 	{
 		vehicleODInfoDataSet[vehID].entrySection = currSectionID;
 		vehicleODInfoDataSet[vehID].entryLane = vehicle->getIdCurrentLane(); // since the lane changing cannot happened in the input sections which have only one lane. 
@@ -373,7 +781,7 @@ void recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 		optVehDataSet.preLane = currAbsoluteLaneID;
 	}
 }
-void behavioralModelParticular::outPutAccelerationDeviation(A2SimVehicle * currentVehicle)
+void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2SimVehicle * currentVehicle, double &diff_mean_left, double &diff_sd_left, double &diff_mean_right, double &diff_sd_right)
 {
 
 
@@ -519,10 +927,7 @@ void behavioralModelParticular::outPutAccelerationDeviation(A2SimVehicle * curre
 	standardDeviation_right = sqrt(0.1 * deviationSUM_right);
 	standardDeviation_left = sqrt(0.1 * deviationSUM_left);
 
-	double diff_sd_right = 0;
-	double diff_mean_right = 0;
-	double diff_sd_left = 0;
-	double diff_mean_left = 0;
+
 
 	diff_sd_right = standardDeviation_right - standardDeviation_current;
 	diff_sd_left = standardDeviation_left - standardDeviation_current;
@@ -531,20 +936,22 @@ void behavioralModelParticular::outPutAccelerationDeviation(A2SimVehicle * curre
 	diff_mean_left = mean_left - mean_current;
 
 
-	string outPutSDInfoFullPath;
-	string outPutSDInfoFileName = "ACCELERATION_SDInfo.dat";
-	outPutSDInfoFullPath = DATAPATH + outPutSDInfoFileName;
-	ofstream outPutSDInfo;
-	outPutSDInfo.open(outPutSDInfoFullPath, ios::app);
-	 
-	outPutSDInfo
-		<< diff_mean_left << "\t"
-		<< diff_sd_left << "\n"
-		<< diff_mean_right << "\t"
-		<< diff_sd_right << endl;
-	 
-	
-	outPutSDInfo.close();
+
+
+	//string outPutSDInfoFullPath;
+	//string outPutSDInfoFileName = "ACCELERATION_SDInfo.dat";
+	//outPutSDInfoFullPath = DATAPATH + outPutSDInfoFileName;
+	//ofstream outPutSDInfo;
+	//outPutSDInfo.open(outPutSDInfoFullPath, ios::app);
+
+	//outPutSDInfo
+	//	<< diff_mean_left << "\t"
+	//	<< diff_sd_left << "\n"
+	//	<< diff_mean_right << "\t"
+	//	<< diff_sd_right << endl;
+
+
+	//outPutSDInfo.close();
 
 
 }
@@ -1163,21 +1570,78 @@ behavioralModelParticular::~behavioralModelParticular()
 {
 }
 
-simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handlerVehicle, unsigned short idHandler, bool isFictitiousVeh) {
+simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handlerVehicle, unsigned short idHandler, bool isFictitiousVeh)
+{
 
-	simVehicleParticular * res = new simVehicleParticular(handlerVehicle, idHandler, isFictitiousVeh);
+	simVehicleParticular * newVehicle = new simVehicleParticular(handlerVehicle, idHandler, isFictitiousVeh);
 	if (!isFictitiousVeh)
 	{
-
+		// for ACC
 		if (AKIGetRandomNumber() < penetrationOfACC)
 		{
-			res->setIsACC(true);
-			res->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
+			newVehicle->setIsACC(true);
+			newVehicle->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
+		}
+
+		// for smartVehicle demand
+
+		// method 1, using the discreted deamnd to denote smart vehicles
+		/*
+		if (readSmartVehicleDemandRumTimes == 0)
+		{
+			readSmartVehicleDemand();
+
+			readSmartVehicleDemandRumTimes = 1;
+		}
+
+		int timeIntervalSequence = -1;
+		int inputFlowSectionSequence = -1;
+		if (timeIntervalSequence != floor(AKIGetCurrentSimulationTime() / timeInverval))
+		{
+			timeIntervalSequence = floor(AKIGetCurrentSimulationTime() / timeInverval);
+		}
+
+		if (inputFlowSectionSequence != getEntrySectionSequence(newVehicle->getIdCurrentSection()))
+		{
+			inputFlowSectionSequence = getEntrySectionSequence(newVehicle->getIdCurrentSection());
+		}
+
+		if (inputFlowSectionSequence != -1 && smartVehicleNum_entrySection_temp[inputFlowSectionSequence] < smartVehicleDemand[inputFlowSectionSequence][timeIntervalSequence])
+		{
+			newVehicle->setIsSmartVehicle(true);
+			smartVehicleNum_entrySection_temp[inputFlowSectionSequence]++;
+		}
+		else if (inputFlowSectionSequence != -1 && smartVehicleNum_entrySection_temp[inputFlowSectionSequence] >= smartVehicleDemand[inputFlowSectionSequence][timeIntervalSequence])
+		{
+			smartVehicleNum_entrySection_temp[inputFlowSectionSequence] = 0;
 		}
 	}
-	return res;
-}
 
+	if (needTestMsg)
+	{
+
+		string outPutDataFullPath;
+		string outPutDataFileName = "SmartVehicleDemandTEST.txt";
+		outPutDataFullPath = DATAPATH + outPutDataFileName;
+		ofstream outPutData;
+		outPutData.open(outPutDataFullPath, ios::app);
+
+		outPutData
+			<< newVehicle->getId() << "\t"
+			<< newVehicle->getIdCurrentSection() << "\t"
+			<< AKIGetCurrentSimulationTime() << endl;
+		outPutData.close();
+	}
+	*/
+
+	// method 2, using random denote
+		if (AKIGetRandomNumber() < penetrationOfSmartVehicles)
+		{
+			newVehicle->setIsSmartVehicle(true);
+		}
+	}
+	return newVehicle;
+}
 void behavioralModelParticular::removedVehicle(void *handlerVehicle, unsigned short idHandler, A2SimVehicle * a2simVeh)
 {
 }
@@ -1201,13 +1665,13 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	int maxLanes = vehicle->getNumberOfLanesInCurrentSection();
 
 
-	simVehicleParticular* vehicleTemp = (simVehicleParticular*)vehicle; //evaluateLaneChanging使用的是A2SimVehicle类，但arrivalNewVehicle产生的是它的子类
+	simVehicleParticular* vehicle_particular_Temp = (simVehicleParticular*)vehicle; //evaluateLaneChanging使用的是A2SimVehicle类，但arrivalNewVehicle产生的是它的子类
 	//bool isACC = vehicleTemp->getIsACC();
 	//bool isOptimizedVehicle = false; //vehicleTemp->getIsOptimizedVehicle();
 
 
 
-	if (useIterationOptimization && haveOptimizedVeh.isExist == false && isEntrySection(currSectionID))
+	if (useIterationOptimization && haveOptimizedVeh.isExist == false && (getEntrySectionSequence(currSectionID) != -1))
 	{
 		optimiazedVehID = vehID;
 		haveOptimizedVeh.isExist = true;
@@ -1270,11 +1734,13 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	recordAllVehicleODInfo(vehicle);
 
-	// sample rate =10%
+	// for acceleration mean and deviation statistics, sample rate =10%
+	/*
 	if (vehicle->getId() % 10 == 0)
 	{
 		outPutAccelerationDeviation(vehicle);
 	}
+	*/
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if (outPutRunTimes == 0 && currTime > 14399)
@@ -1843,6 +2309,15 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		vehicle->applyLaneChanging(direction, threadId); // this function includes the gap acceptance. so if direction is not acceptable, aimsun will consider it
 		return true;
 	}
+	else if (vehicle_particular_Temp->getIsSmartVehicle())
+	{
+
+		int action = getQLearningDecisionAction(vehicle);
+		direction = convertQActionToDirection(action);
+
+		vehicle->applyLaneChanging(direction, threadId);
+		updateQTable(getStateID_QLearning(vehicle), action);
+	}
 	else
 	{
 		// use default Gipps lane change model
@@ -2084,7 +2559,6 @@ double behavioralModelParticular::getIDMDecelerationSpeed(simVehicleParticular *
 	{
 		int vehID = vehicle->getId();
 
-		simVehicleParticular *tempVeh;
 
 
 		//// Test for understanding "Shift'
@@ -2177,7 +2651,7 @@ double behavioralModelParticular::getIDMDecelerationSpeed(simVehicleParticular *
 				AKIPrintString(msg);
 			}
 		}*/
-		/*END Test for understanding "getgap"*/
+		/* END Test for understanding "getgap" */
 
 
 
@@ -2194,7 +2668,6 @@ double behavioralModelParticular::getIDMDecelerationSpeed(simVehicleParticular *
 		double diff = VelAnterior - VelAnteriorLeader;
 
 
-		simVehicleParticular *newLeader;
 		simVehicleParticular *newVehicle = vehicle;
 
 		double DesiredGap = getIDMDesiredGap(vehicle, leader, VelAnterior, VelAnteriorLeader, GapAnterior);
@@ -2520,57 +2993,6 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 	vehicle->getUpDown(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
 
 
-
-
-	//double currTime = AKIGetCurrentSimulationTime();
-
-	//char msg[200];
-	//if (pVehLeftUp != NULL)
-	//{
-	//	sprintf_s(msg, "SV ID is %d, postion=%f, pVehLeftUp = %d, offset=%f ", vehicle->getId(), vehicle->getPosition(0), pVehLeftUp->getId(), pVehLeftUp->getPosition(0));
-	//	AKIPrintString(msg);
-	//}
-	//if (pVehLeftDw != NULL)
-	//{
-	//	sprintf_s(msg, "SV ID is %d, postion=%f, pVehLeftDw = %d, offset=%f ", vehicle->getId(), vehicle->getPosition(0), pVehLeftDw->getId(), pVehLeftDw->getPosition(0));
-	//	AKIPrintString(msg);
-	//}
-	//if (pVehRightUp != NULL)
-	//{
-	//	sprintf_s(msg, "SV ID is %d, postion=%f, pVehRightUp = %d, offset=%f ", vehicle->getId(), vehicle->getPosition(0), pVehRightUp->getId(), pVehRightUp->getPosition(0));
-	//	AKIPrintString(msg);
-	//}
-	//if (pVehRightDw != NULL)
-	//{
-	//	sprintf_s(msg, "SV ID is %d, postion=%f, pVehRightDw = %d, offset=%f ", vehicle->getId(), vehicle->getPosition(0), pVehRightDw->getId(), pVehRightDw->getPosition(0));
-	//	AKIPrintString(msg);
-	//}
-	//
-
-
-	/*visible limit, if a vehicle is not visible, it can not influence current vehicle
-	it is unnecessary, and shall be abandoned.
-	*/
-	//double gapLeftToUp, gapLeftToDw;
-	//gapLeftToUp = VISIBLELIMIT;
-	//gapLeftToDw = VISIBLELIMIT;
-	//if (shiftCurUp > VISIBLELIMIT) pVehCurUp = NULL;
-	//if (shiftCurDw > VISIBLELIMIT) pVehCurDw = NULL;
-
-	//if (ShiftUpLeft > VISIBLELIMIT) pVehLeftUp = NULL;
-	//if (ShiftDwLeft > VISIBLELIMIT) pVehLeftDw = NULL;
-
-	//if (ShiftUpRight > VISIBLELIMIT) pVehRightUp = NULL;
-	//if (ShiftDwRight > VISIBLELIMIT) pVehRightDw = NULL;
-
-
-
-	double testTime = AKIGetCurrentSimulationTime();
-	int testID = vehicle->getId();
-	if (testTime == 312 && testID == 40)
-	{
-		testID = 0;
-	}
 	/**********************LEFT Calculation*********************************/
 	if (curLane < maxLanes)
 	{

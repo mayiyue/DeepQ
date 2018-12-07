@@ -29,11 +29,11 @@ void simVehicleParticular::setIsACC(bool setValue)
 }
 
 
-const bool simVehicleParticular::getIsOptimizedVehicle() const
+const bool simVehicleParticular::getIsSmartVehicle() const
 {
 	return isSmartVehicle;
 }
-void simVehicleParticular::setIsOptimizedVehicle(bool setValue)
+void simVehicleParticular::setIsSmartVehicle(bool setValue)
 {
 	isSmartVehicle = setValue;
 }

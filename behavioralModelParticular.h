@@ -67,9 +67,21 @@ public:
 
 	double getModifiedThreshold(A2SimVehicle * vehicle, int targetLane);
 
-	void outPutAccelerationDeviation(A2SimVehicle * currentVehicle);
+	int getQLearningDecisionAction(A2SimVehicle * vehicle);
+
+	int getStateID_QLearning(A2SimVehicle * vehicle);
+
+	int getMaxQValueAction(int stateID, A2SimVehicle * vehicle);
+
+	int getAvailableActionRandomly_Qlearning(int stateID, A2SimVehicle * vehicle);
+
+	
+	void getLeadersAccelerationsDistributionDifference(A2SimVehicle * currentVehicle, double & diff_left_mean, double & diff_left_sd, double & diff_right_mean, double & diff_right_sd);
+
+	
 
 };
 
 #endif
+
 

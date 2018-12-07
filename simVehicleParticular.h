@@ -24,8 +24,8 @@ public:
 	const bool getIsACC() const;
 	void setTimeGapOfACC(double setValue);
 
-	const bool getIsOptimizedVehicle() const;
-	void setIsOptimizedVehicle(bool setValue);
+	const bool getIsSmartVehicle() const;
+	void setIsSmartVehicle(bool setValue);
 
 
 
