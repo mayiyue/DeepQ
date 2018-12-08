@@ -71,6 +71,8 @@ public:
 
 	int getStateID_QLearning(A2SimVehicle * vehicle);
 
+	int getDiscretedState_Qlearning(double diff_value);
+
 	int getMaxQValueAction(int stateID, A2SimVehicle * vehicle);
 
 	int getAvailableActionRandomly_Qlearning(int stateID, A2SimVehicle * vehicle);
