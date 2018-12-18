@@ -38,7 +38,11 @@ bool useMOBIL = true;
 bool useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 
 bool useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
+bool useQLearning = false;
 
+// controllers 
+double simulationTime_temp = 0; // for some codes that need be run only one time in one simulation step
+bool smartVehiclePenetrationRateRead = false;
 
 
 double const penetrationOfACC = 0;
@@ -48,11 +52,12 @@ double const upLimitOfACCTimeGap = 0.7;
 
 // for Optimizing Working
 double optimizedPolitenessFactor, optimizedThreshold, optimizedSafeFactor; // for MOBIL p , a_th, b_safe
-double const penetrationOfSmartVehicles = 0.01;
+double  penetrationOfSmartVehicles; // read from file
+
 int timeInverval = 450; // 450 sec = 8 mins, 8 x 30 =240 mins
 
 // q-learning
-struct 
+struct
 {
 	float epsilon;
 	float learning_rate_r;
@@ -73,7 +78,7 @@ struct
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = 5070;//4000 4121 5070 // work only when   useIterationOptimization = false
+int optimiazedVehID = -1;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
 
@@ -97,6 +102,8 @@ struct {
 	double totalTravelTime;
 	double totalTravelPathLength;
 	int preSectionID;
+
+	bool isSmartVehicle; // TEST for SV demand
 }vehicleODInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
 
 struct TrajectoryData {
@@ -127,6 +134,7 @@ struct VehiclePathInfo {
 
 
 	double totalTravelPathLength; // m
+	double pathLengthBySection; // record the total length of sections that the vehicle had passed, m
 	int totalLaneChangeTimes;
 	double totalTravelTime; // sec
 	double entryTime, exitTime; // sec
@@ -207,6 +215,16 @@ void readSmartVehicleDemand()
 }
 */
 
+/*Method, Smart Demand (penetration rate) from a outside file*/
+void readSmartVehiclePenetrationRate()
+{
+	ifstream readSmartVehicleDemandFile;
+	readSmartVehicleDemandFile.open("D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\InputData\\SmartVehiclePenetrationRate.dat", ios::in);
+
+	readSmartVehicleDemandFile >> penetrationOfSmartVehicles;
+	readSmartVehicleDemandFile.close();
+
+}
 
 int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 {
@@ -437,7 +455,7 @@ int behavioralModelParticular::getMaxQValueAction(int stateID, A2SimVehicle * ve
 
 
 	/*******************************************************************/
-	
+
 	//get current lane follower and leader
 	vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
 
@@ -522,7 +540,7 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID,
 
 
 	double randNUM = AKIGetRandomNumber();
-	
+
 	// the vehicle can change to left or right
 	if (curLane <= maxLanes - 1 && curLane > 1)
 	{
@@ -587,9 +605,9 @@ float rewardQLearning(int stateID, int action)
 		stateCode[i] = stateID / int(pow(10, i)) % 10;
 
 	}
-	if (action==1)
+	if (action == 1)
 	{
-		reward = (float) stateCode[8]; // state_diff_ac_left
+		reward = (float)stateCode[8]; // state_diff_ac_left
 	}
 	else if (action == 2)
 	{
@@ -623,7 +641,7 @@ float maxQActionValueForState(int stateID)
 
 }
 
-void updateQTable(int stateID, int action,int next_stateID)
+void updateQTable(int stateID, int action, int next_stateID)
 {
 	int stateCode[10] = { 0 };
 	for (int i = 0; i <= 9; ++i)
@@ -633,7 +651,7 @@ void updateQTable(int stateID, int action,int next_stateID)
 	}
 
 	/*
-	如果在当前时刻更新Q表，当前时刻的action应用后下一时刻的state不一定是当前时刻“预测”的state，应该用预测state还是下一时刻实际的state作为next_state? 
+	如果在当前时刻更新Q表，当前时刻的action应用后下一时刻的state不一定是当前时刻“预测”的state，应该用预测state还是下一时刻实际的state作为next_state?
 	应该在哪一时刻更新Q表？
 	如果apply之后AIMSUN并不能完整的执行，那么这一部分必须要反映到Qlearning里
 	*/
@@ -791,7 +809,7 @@ void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 
 
 
-	// record path length
+	// record path length section by section
 	if (currSectionID != vehicleODInfoDataSet[vehID].preSectionID)
 	{
 		A2KSectionInf sectionInfo;
@@ -807,10 +825,13 @@ void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 	{
 		vehicleODInfoDataSet[vehID].entrySection = currSectionID;
 		vehicleODInfoDataSet[vehID].entryLane = vehicle->getIdCurrentLane(); // since the lane changing cannot happened in the input sections which have only one lane. 
+		vehicleODInfoDataSet[vehID].isSmartVehicle = ((simVehicleParticular*)vehicle)->getIsSmartVehicle();
 	}
 	if (isExitSection(currSectionID))
+	{
 		vehicleODInfoDataSet[vehID].exitSection = currSectionID;
 
+	}
 
 }
 
@@ -826,19 +847,28 @@ void recordOptVehicleTravelTime(double currTime)
 		optVehDataSet.totalTravelTime = optVehDataSet.exitTime - optVehDataSet.entryTime;
 
 }
-void recordOptVehiclePathLength(int currSectionID)
+void recordOptVehiclePathLength(A2SimVehicle * vehicle)
 {
-	// record path length
-	if (currSectionID != optVehDataSet.preSectionID)
+	int currentSectionID = vehicle->getIdCurrentSection();
+	// record path length each time step
+	if (getEntrySectionSequence(currentSectionID) != -1)
+	{
+		optVehDataSet.totalTravelPathLength = vehicle->getPosition(0);
+		optVehDataSet.preSectionID = currentSectionID;
+	}
+	else if (currentSectionID != optVehDataSet.preSectionID)
 	{
 		A2KSectionInf sectionInfo;
-		sectionInfo = AKIInfNetGetSectionANGInf(currSectionID);
+		sectionInfo = AKIInfNetGetSectionANGInf(optVehDataSet.preSectionID);
 
-		optVehDataSet.totalTravelPathLength += sectionInfo.length;
-		optVehDataSet.preSectionID = currSectionID;
+		optVehDataSet.pathLengthBySection += sectionInfo.length;
+
+		optVehDataSet.preSectionID = currentSectionID;
 	}
-
-
+	else
+	{
+		optVehDataSet.totalTravelPathLength = optVehDataSet.pathLengthBySection + vehicle->getPosition(0);
+	}
 }
 void recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 {
@@ -1081,9 +1111,9 @@ void inputParameterSetFromAFT()
 		parameterFile.close();
 
 
-		char msg[150];
-		sprintf_s(msg, "SmartVehID=%d MOBIL Parameters loaded. (P,T)=(%f,%f)", optimiazedVehID, parameterSet[363], parameterSet[364]);
-		AKIPrintString(msg);
+		/*	char msg[150];
+			sprintf_s(msg, "SmartVehID=%d MOBIL Parameters loaded. (P,T)=(%f,%f)", optimiazedVehID, parameterSet[363], parameterSet[364]);
+			AKIPrintString(msg);*/
 
 		inPutParaRunTimes = 1;
 	}
@@ -1147,7 +1177,9 @@ void outPutAllVehicleODInfo()
 		<< "exitTime" << "\t"
 		<< "totalTravelPathLength" << "\t"
 		<< "totalTravelTime" << "\t"
-		<< "Average Travel Time" << endl;
+		<< "Average Travel Time" << "\t"
+		<< "Smart Vehicle Identify"
+		<< endl;
 	for (auto vehID = 1; vehID < 16000; ++vehID)
 	{
 		outPutAllVehicleODInfo
@@ -1157,7 +1189,9 @@ void outPutAllVehicleODInfo()
 			<< vehicleODInfoDataSet[vehID].entryTime << "\t"
 			<< vehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
 			<< vehicleODInfoDataSet[vehID].totalTravelTime << "\t"
-			<< vehicleODInfoDataSet[vehID].totalTravelTime / vehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << endl;
+			<< vehicleODInfoDataSet[vehID].totalTravelTime / vehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << "\t"
+			<< vehicleODInfoDataSet[vehID].isSmartVehicle
+			<< endl;
 
 	}
 	outPutAllVehicleODInfo << endl;
@@ -1621,7 +1655,7 @@ double behavioralModelParticular::getModifiedThreshold(A2SimVehicle* vehicle, in
 
 
 
-//functions for debug, test 2018-9-20 14:03:20
+//function for debug, test 2018-9-20 14:03:20
 void debug_needDebugMessage(char* message, double value)
 {
 	char msg[200];
@@ -1713,11 +1747,17 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 	*/
 
 	// method 2, using random denote
+		if (!smartVehiclePenetrationRateRead)
+		{
+			readSmartVehiclePenetrationRate();
+			smartVehiclePenetrationRateRead = true;
+		}
 		if (AKIGetRandomNumber() < penetrationOfSmartVehicles)
 		{
 			newVehicle->setIsSmartVehicle(true);
 		}
 	}
+
 	return newVehicle;
 }
 void behavioralModelParticular::removedVehicle(void *handlerVehicle, unsigned short idHandler, A2SimVehicle * a2simVeh)
@@ -1753,44 +1793,41 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	{
 		optimiazedVehID = vehID;
 		haveOptimizedVeh.isExist = true;
-
 	}
 
 
-	if (vehID == optimiazedVehID)
+	if (/*vehID == optimiazedVehID*/vehicle_particular_Temp->getIsSmartVehicle())
 	{
 
 		inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
 
 
-		recordOptVehicleTravelTime(currTime);
-		recordOptVehiclePathLength(currSectionID);
-		recordOptVehiclLaneChangingInfo(vehicle);
+		//recordOptVehicleTravelTime(currTime);
+		recordOptVehiclePathLength(vehicle);
+		//recordOptVehiclLaneChangingInfo(vehicle);
 		//recordOptVehiclTrajectory(vehicle, currTime, currSectionID);
 
 
 		/******TEST for locating special position*********/
-		//if (needTestMsg &&
-		//	(currSectionID == 949
-		//		|| currSectionID == 386
-		//		|| currSectionID == 967
-		//		|| currSectionID == 395
-		//		|| currSectionID == 935
-		//		|| currSectionID == 395
-		//		|| currSectionID == 935
-		//		|| currSectionID == 404
-		//		|| currSectionID == 967
-		//		|| currSectionID == 406
-		//		|| currSectionID == 414
-		//		|| currSectionID == 986
-		//		))
-		//{
-		//	double temp_xfront, temp_yfront, temp_xback, temp_yback;
-		//	vehicle->getCoordinates(temp_xfront, temp_yfront, temp_xback, temp_yback);
-		//	char msg[200];
-		//	sprintf_s(msg, "Now Section %d PositionXY=%f", currSectionID, sqrt(temp_xfront*temp_xfront + temp_yfront*temp_yfront));
-		//	AKIPrintString(msg);
-		//}
+		/*if (needTestMsg &&
+			(currSectionID == 949
+				|| currSectionID == 386
+				|| currSectionID == 967
+				|| currSectionID == 395
+				|| currSectionID == 935
+				|| currSectionID == 395
+				|| currSectionID == 935
+				|| currSectionID == 404
+				|| currSectionID == 967
+				|| currSectionID == 406
+				|| currSectionID == 414
+				|| currSectionID == 986
+				))
+		{
+			char msg[200];
+			sprintf_s(msg, "Now Section %d PathLength=%f", currSectionID, optVehDataSet.totalTravelPathLength);
+			AKIPrintString(msg);
+		}*/
 		/******TEST*********/
 
 
@@ -1810,7 +1847,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	//recordImpactedVehID(vehID, currTime, currSectionID);
 
-	recordAllVehicleODInfo(vehicle);
+	//recordAllVehicleODInfo(vehicle);
 
 	// for acceleration mean and deviation statistics, sample rate =10%
 	/*
@@ -1823,19 +1860,19 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if (outPutRunTimes == 0 && currTime > 14399)
 	{
-		outPutOptVehData();
+		//outPutOptVehData();
 
-		outPutOptVehPerformance();
+		//outPutOptVehPerformance();
 
 		//outPutOptVehTrajectoryDataSet();
 
-		outPutOptVehLaneChangingDetials();
+		//outPutOptVehLaneChangingDetials();
 
-		outPutImpactedVehicleIDSet();
+		//outPutImpactedVehicleIDSet();
 
 		//outPutAllVehicleODInfo();
 
-		outPutControlGroupVehiclesODInfo();
+		//	outPutControlGroupVehiclesODInfo();
 
 
 
@@ -2349,8 +2386,15 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	}
 	/************ otherwise, normal lane changing *************/
-	if (vehID == optimiazedVehID && useMOBIL)
+	if (/*vehID == optimiazedVehID*/ vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
 	{
+
+
+		/*Smart Vehicle Demand, Penetration Rate TEST*/
+
+		/*Smart Vehicle Demand, Penetration Rate TEST*/
+
+
 
 		//optimizedThreshold = parameterSet[currSectionID];
 		optimizedPolitenessFactor = parameterSet[363];
@@ -2358,7 +2402,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		direction = MOBILDirection(vehicle, optimizedPolitenessFactor, optimizedThreshold);
 
-		// control OD, force the optimized vehicle to experience the whole freeway
+		// control OD, force the optimized vehicle to experience the whole freeway, it cannot exit the freeway though off-ramp
 		if ((currSectionID == 386 && currLane == 2 && direction == 1)
 			|| (currSectionID == 406 && currLane == 2 && direction == 1))
 		{
@@ -2366,28 +2410,23 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		}
 
 
-		//direction = MOBILDirection(vehicle, 1, 0.5);
-		//direction = MOBILDirection(vehicle, 1, 0);
+//direction = MOBILDirection(vehicle, 1, 0.5);
+//direction = MOBILDirection(vehicle, 1, 0);
 
-		//double farSightThreshold = getModifiedThreshold(vehicle, currLane - direction);
-		//int farSightDirection = MOBILDirection(vehicle, 1, 0.5+farSightThreshold);
+//double farSightThreshold = getModifiedThreshold(vehicle, currLane - direction);
+//int farSightDirection = MOBILDirection(vehicle, 1, 0.5+farSightThreshold);
 
-		// block Turn To OffRamp
-		//if ((currSectionID == 386 || currSectionID == 406) && currLane == 2 && direction == 1)
-		//	direction = 0;
+// block Turn To OffRamp
+//if ((currSectionID == 386 || currSectionID == 406) && currLane == 2 && direction == 1)
+//	direction = 0;
 
-		//if (direction != 0 && currTime > 4203)
-		//{
-		//	char msg[150];
-		//	sprintf_s(msg, "vehicle = %d,current time=%f MOBIL Direction = %d", vehID, currTime, direction);
-		//	AKIPrintString(msg);
-		//}
+
 
 
 		vehicle->applyLaneChanging(direction, threadId); // this function includes the gap acceptance. so if direction is not acceptable, aimsun will consider it
 		return true;
 	}
-	else if (vehicle_particular_Temp->getIsSmartVehicle())
+	else if (vehicle_particular_Temp->getIsSmartVehicle() && useQLearning)
 	{
 
 		int stateID = getStateID_QLearning(vehicle);
@@ -2398,10 +2437,12 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		direction = convertQActionToDirection(action);
 
 		vehicle->applyLaneChanging(direction, threadId);
-		
+
 		q_LearningParameters.action_last = action;
 		q_LearningParameters.stateID_last = stateID;
-		
+
+
+		return true;
 	}
 	else
 	{
