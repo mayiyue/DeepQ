@@ -30,17 +30,16 @@ using namespace std;
 #define DATAPATH "D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\"
 #define AFTPATH "D:\\Aimsun 8.1\\"
 
-bool needTestMsg = false;
+bool const needTestMsg = false;
+bool const useIDM = true;
+bool const useHeuristicLaneChangeModel = true;
+bool const useMOBIL = false;
+bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 
-bool useIDM = true;
-bool useHeuristicLaneChangeModel = true;
-bool useMOBIL = true;
-bool useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
+bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
+bool const useQLearning = true;
 
-bool useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
-bool useQLearning = false;
-
-// controllers 
+// triggers
 double simulationTime_temp = 0; // for some codes that need be run only one time in one simulation step
 bool smartVehiclePenetrationRateRead = false;
 
@@ -64,11 +63,12 @@ struct
 	float alpha;
 
 	// 6^10*3 float ， 0.72 GB memory cost
-	// [3] 0 current 1 left 2 right
+	// [4] Lane Number 
+	// [3] Actions:0 current 1 left 2 right
 	float q_table[6][6][6][6][6][6][6][6][6][4][3];
 
-	int stateID_last;
-	int action_last;
+	unsigned int stateID_last;
+	unsigned int action_last;
 
 }q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0},0,0 };
 
@@ -230,7 +230,7 @@ int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 {
 
 	int action = 0;
-	int stateID = getStateID_QLearning(vehicle);
+	unsigned int stateID = getStateID_QLearning(vehicle);
 	if (AKIGetRandomNumber() < q_LearningParameters.epsilon)
 	{
 		action = getMaxQValueAction(stateID, vehicle);
@@ -259,7 +259,7 @@ int convertQActionToDirection(int Qaction)
 	return direction;
 }
 
-int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehicle)
+unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehicle)
 {
 
 	int curLane = vehicle->getIdCurrentLane();
@@ -387,30 +387,28 @@ int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehicle)
 
 	state_diff_an_right = getDiscretedState_Qlearning(diff_an_right);
 
-	state_diff_mean_left = getDiscretedState_Qlearning(state_diff_ac_left);
-	state_diff_mean_right = getDiscretedState_Qlearning(state_diff_mean_right);
+	state_diff_mean_left = getDiscretedState_Qlearning(diff_mean_left);
+	state_diff_mean_right = getDiscretedState_Qlearning(diff_mean_right);
 
 
-	state_diff_sd_left = getDiscretedState_Qlearning(state_diff_sd_left);
-	state_diff_sd_right = getDiscretedState_Qlearning(state_diff_sd_right);
+	state_diff_sd_left = getDiscretedState_Qlearning(diff_sd_left);
+	state_diff_sd_right = getDiscretedState_Qlearning(diff_sd_right);
 
 	int state_current_lane = vehicle->getIdCurrentLane();
 
-	unsigned long int stateID = 0;
-
-
+	unsigned int stateID = 0;
 
 	stateID =
-		state_diff_ac_left * (int)10e10
-		+ state_diff_ac_right * (int)10e9
-		+ state_diff_an_left* (int)10e8
-		+ state_diff_ao  * (int)10e7
-		+ state_diff_an_right * (int)10e6
-		+ state_diff_mean_left* (int)10e5
-		+ state_diff_sd_left *(int)10e4
-		+ state_diff_mean_right *(int)10e3
-		+ state_diff_sd_right *(int)10e2
-		+ state_current_lane * 1;
+		state_diff_ac_left *(int)pow(10, 9)
+		+ state_diff_ac_right *(int)pow(10, 8)
+		+ state_diff_an_left* (int)pow(10, 7)
+		+ state_diff_ao  *(int)pow(10, 6)
+		+ state_diff_an_right * (int)pow(10, 5)
+		+ state_diff_mean_left* (int)pow(10, 4)
+		+ state_diff_sd_left *(int)pow(10, 3)
+		+ state_diff_mean_right *(int)pow(10, 2)
+		+ state_diff_sd_right *(int)pow(10, 1)
+		+ state_current_lane * (int)pow(10, 0);
 
 	return stateID;
 }
@@ -419,15 +417,15 @@ int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehicle)
 int behavioralModelParticular::getDiscretedState_Qlearning(double diff_value)
 {
 	int state = 0;
-	if (diff_value < -1)
+	if (diff_value <= -1)
 		state = 0;
-	else if (diff_value > -1 && diff_value < -0.5)
+	else if (diff_value > -1 && diff_value <= -0.5)
 		state = 1;
-	else if (diff_value > -0.5 && diff_value < 0)
+	else if (diff_value > -0.5 && diff_value <= 0)
 		state = 2;
-	else if (diff_value > 0 && diff_value < 0.5)
+	else if (diff_value > 0 && diff_value <= 0.5)
 		state = 3;
-	else if (diff_value > 0.5&& diff_value < 1)
+	else if (diff_value > 0.5&& diff_value <= 1)
 		state = 4;
 	else if (diff_value > 1)
 		state = 5;
@@ -435,7 +433,7 @@ int behavioralModelParticular::getDiscretedState_Qlearning(double diff_value)
 	return state;
 }
 
-int behavioralModelParticular::getMaxQValueAction(int stateID, A2SimVehicle * vehicle)
+int behavioralModelParticular::getMaxQValueAction(unsigned int stateID, A2SimVehicle * vehicle)
 {
 	int action = 0;
 	int stateCode[10] = { 0 };
@@ -469,8 +467,8 @@ int behavioralModelParticular::getMaxQValueAction(int stateID, A2SimVehicle * ve
 
 
 
-
-
+	int currentSection = vehicle->getIdCurrentSection();
+	int vehID = vehicle->getId();
 
 	for (int i = 0; i <= 9; ++i)
 	{
@@ -480,16 +478,16 @@ int behavioralModelParticular::getMaxQValueAction(int stateID, A2SimVehicle * ve
 	float currentDirectionQuality = q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
 	float leftDirectionqQuality = q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
 	float rightDirectionqQuality = q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
-	if ((curlane < maxlane)
+	if ((curlane < maxlane)// left is possible
 		&& (leftDirectionqQuality > currentDirectionQuality&&leftDirectionqQuality >= rightDirectionqQuality)
-		&& vehicle->isGapAcceptable(-1, vehicle->getPosition(0), pVehLeftUp, ShiftUpLeft, pVehLeftDw, ShiftDwLeft)
+
 		)
 	{
 		return 1; // turn left
 	}
-	else if ((curlane > 1)
+	else if ((curlane > 1) // right is possible
 		&& (rightDirectionqQuality > currentDirectionQuality&&rightDirectionqQuality > leftDirectionqQuality)
-		&& vehicle->isGapAcceptable(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight)
+
 		)
 	{
 		return 2; // turn right
@@ -501,7 +499,7 @@ int behavioralModelParticular::getMaxQValueAction(int stateID, A2SimVehicle * ve
 
 }
 
-int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID, A2SimVehicle* vehicle)
+int behavioralModelParticular::getAvailableActionRandomly_Qlearning(unsigned int stateID, A2SimVehicle* vehicle)
 {
 
 	int curLane = vehicle->getIdCurrentLane();
@@ -545,13 +543,13 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID,
 	if (curLane <= maxLanes - 1 && curLane > 1)
 	{
 		if (randNUM < 0.33333
-			&& vehicle->isGapAcceptable(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight)
+
 			)
 		{
 			return 2; // right
 		}
 		else if (randNUM < 0.66666
-			&& vehicle->isGapAcceptable(-1, vehicle->getPosition(0), pVehLeftUp, ShiftUpLeft, pVehLeftDw, ShiftDwLeft)
+
 			)
 		{
 			return 1; // left
@@ -565,7 +563,7 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID,
 	else if (curLane == 1 && maxLanes > 1)
 	{
 		if (randNUM < 0.5
-			&&vehicle->isGapAcceptable(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight)
+
 			)
 		{
 			return 1; // left
@@ -576,10 +574,10 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID,
 		}
 	}
 	//  the vehicle can only change to right 
-	else if (curLane == maxLanes)
+	else if (curLane == maxLanes&&maxLanes != 1)
 	{
 		if (randNUM < 0.5
-			&& vehicle->isGapAcceptable(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight)
+
 			)
 		{
 			return 2; // right
@@ -589,6 +587,10 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID,
 			return 0; // current
 		}
 	}
+	else if (curLane == maxLanes&&maxLanes == 1) // can not change lane
+	{
+		return 0; // current
+	}
 	//  the vehicle cannot change lane
 	else
 	{
@@ -596,7 +598,7 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(int stateID,
 	}
 }
 
-float rewardQLearning(int stateID, int action)
+float rewardQLearning(unsigned int stateID, int action)
 {
 	float reward = 0;
 	int stateCode[10] = { 0 };
@@ -619,7 +621,7 @@ float rewardQLearning(int stateID, int action)
 	}
 	return reward;
 }
-float maxQActionValueForState(int stateID)
+float maxQActionValueForState(unsigned int stateID)
 {
 	int stateCode[10] = { 0 };
 	for (int i = 0; i <= 9; ++i)
@@ -641,7 +643,7 @@ float maxQActionValueForState(int stateID)
 
 }
 
-void updateQTable(int stateID, int action, int next_stateID)
+void updateQTable(unsigned int stateID, int action, int next_stateID)
 {
 	int stateCode[10] = { 0 };
 	for (int i = 0; i <= 9; ++i)
@@ -1121,6 +1123,14 @@ void inputParameterSetFromAFT()
 }
 
 
+void inputQTable()
+{
+
+}
+void outPutQTable()
+{
+	q_LearningParameters.q_table[][][][][][][][][]
+}
 void outPutControlGroupVehiclesODInfo()
 {
 	string outPutControlGroupVehicleODInfoFullPath;
@@ -1247,6 +1257,7 @@ void outPutOptVehTrajectoryDataSet()
 
 }
 
+
 void outPutOptVehLaneChangingDetials()
 {
 
@@ -1336,7 +1347,8 @@ void outPutOptVehData()
 }
 
 
-// for investigating the relation between lane changing times and politeness factor p 
+//TEST, for investigating the relation between lane changing times and politeness factor p 
+/*
 void processLCProfitData(
 	A2SimVehicle *vehicle,
 	double ac_Right_profit,
@@ -1502,7 +1514,7 @@ void processLCProfitData(
 
 }
 
-
+*/
 
 
 /*
@@ -1695,7 +1707,9 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 			newVehicle->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
 		}
 
-		// for smartVehicle demand
+
+		/*Smart Vehicle Demand, Penetration Rate */
+
 
 		// method 1, using the discreted deamnd to denote smart vehicles
 		/*
@@ -1746,7 +1760,7 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 	}
 	*/
 
-	// method 2, using random denote
+	// method 2, using randomly denoting
 		if (!smartVehiclePenetrationRateRead)
 		{
 			readSmartVehiclePenetrationRate();
@@ -1796,7 +1810,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 
 
-	if (/*vehID == optimiazedVehID*/vehicle_particular_Temp->getIsSmartVehicle())
+	if (vehicle_particular_Temp->getIsSmartVehicle())
 	{
 
 		inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
@@ -1849,13 +1863,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	//recordAllVehicleODInfo(vehicle);
 
-	// for acceleration mean and deviation statistics, sample rate =10%
-	/*
-	if (vehicle->getId() % 10 == 0)
-	{
-		outPutAccelerationDeviation(vehicle);
-	}
-	*/
+
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if (outPutRunTimes == 0 && currTime > 14399)
@@ -2386,13 +2394,8 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	}
 	/************ otherwise, normal lane changing *************/
-	if (/*vehID == optimiazedVehID*/ vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
+	if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
 	{
-
-
-		/*Smart Vehicle Demand, Penetration Rate TEST*/
-
-		/*Smart Vehicle Demand, Penetration Rate TEST*/
 
 
 
@@ -2403,25 +2406,22 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		direction = MOBILDirection(vehicle, optimizedPolitenessFactor, optimizedThreshold);
 
 		// control OD, force the optimized vehicle to experience the whole freeway, it cannot exit the freeway though off-ramp
-		if ((currSectionID == 386 && currLane == 2 && direction == 1)
+		/*if ((currSectionID == 386 && currLane == 2 && direction == 1)
 			|| (currSectionID == 406 && currLane == 2 && direction == 1))
 		{
 			direction = 0;
-		}
+		}*/
 
 
-//direction = MOBILDirection(vehicle, 1, 0.5);
-//direction = MOBILDirection(vehicle, 1, 0);
+		//direction = MOBILDirection(vehicle, 1, 0.5);
+		//direction = MOBILDirection(vehicle, 1, 0);
 
-//double farSightThreshold = getModifiedThreshold(vehicle, currLane - direction);
-//int farSightDirection = MOBILDirection(vehicle, 1, 0.5+farSightThreshold);
+		//double farSightThreshold = getModifiedThreshold(vehicle, currLane - direction);
+		//int farSightDirection = MOBILDirection(vehicle, 1, 0.5+farSightThreshold);
 
-// block Turn To OffRamp
-//if ((currSectionID == 386 || currSectionID == 406) && currLane == 2 && direction == 1)
-//	direction = 0;
-
-
-
+		// block Turn To OffRamp
+		//if ((currSectionID == 386 || currSectionID == 406) && currLane == 2 && direction == 1)
+		//	direction = 0;
 
 		vehicle->applyLaneChanging(direction, threadId); // this function includes the gap acceptance. so if direction is not acceptable, aimsun will consider it
 		return true;
@@ -2429,7 +2429,11 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	else if (vehicle_particular_Temp->getIsSmartVehicle() && useQLearning)
 	{
 
-		int stateID = getStateID_QLearning(vehicle);
+		unsigned int stateID = getStateID_QLearning(vehicle);
+
+
+
+
 		updateQTable(q_LearningParameters.stateID_last, q_LearningParameters.action_last, stateID);
 
 
@@ -2492,14 +2496,8 @@ double behavioralModelParticular::computeCarFollowingAccelerationComponentSpeed(
 	double VelPropia = 0;
 
 	//if not inflow section, or it will influence the calculation of demand
-	if (
-		(useIDM)
-		&& vehicle->getIdCurrentSection() != 671
-		&& vehicle->getIdCurrentSection() != 664
-		&& vehicle->getIdCurrentSection() != 670
-		&& vehicle->getIdCurrentSection() != 928
-		&& vehicle->getIdCurrentSection() != 932
-
+	if ((useIDM)
+		&& getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1
 		//&& vehicle->getIdCurrentSection() != 556// only used in capacity test work
 		)
 	{
@@ -2516,13 +2514,7 @@ double behavioralModelParticular::computeCarFollowingDecelerationComponentSpeed(
 {
 	double VelImpuesta = 0;
 	if ((useIDM)
-		&& vehicle->getIdCurrentSection() != 671
-		&& vehicle->getIdCurrentSection() != 664
-		&& vehicle->getIdCurrentSection() != 670
-		&& vehicle->getIdCurrentSection() != 928
-		&& vehicle->getIdCurrentSection() != 932
-
-		&& vehicle->getIdCurrentSection() != 556// only used in capacity test
+		&& getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1
 		) {
 		VelImpuesta = getIDMDecelerationSpeed((simVehicleParticular*)vehicle, Shift, (simVehicleParticular*)vehicleLeader, ShiftLeader);
 	}
@@ -3028,7 +3020,7 @@ double behavioralModelParticular::generateGaussianNoise(double mu, double sigma)
 //
 //}
 
-//determining by speed, section and lane   
+//determining by speed, section and lane , a on-off controller: useAsymmetricMOBIL 
 bool behavioralModelParticular::useAsymmetric(simVehicleParticular * vehicle)
 {
 	int curlane = vehicle->getIdCurrentLane();

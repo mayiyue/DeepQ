@@ -69,13 +69,13 @@ public:
 
 	int getQLearningDecisionAction(A2SimVehicle * vehicle);
 
-	int getStateID_QLearning(A2SimVehicle * vehicle);
+	unsigned int getStateID_QLearning(A2SimVehicle * vehicle);
 
 	int getDiscretedState_Qlearning(double diff_value);
 
-	int getMaxQValueAction(int stateID, A2SimVehicle * vehicle);
+	int getMaxQValueAction(unsigned int stateID, A2SimVehicle * vehicle);
 
-	int getAvailableActionRandomly_Qlearning(int stateID, A2SimVehicle * vehicle);
+	int getAvailableActionRandomly_Qlearning(unsigned int stateID, A2SimVehicle * vehicle);
 
 	
 	void getLeadersAccelerationsDistributionDifference(A2SimVehicle * currentVehicle, double & diff_left_mean, double & diff_left_sd, double & diff_right_mean, double & diff_right_sd);
