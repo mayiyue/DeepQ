@@ -24,55 +24,39 @@
 
 using namespace std;
 #define Tolerancia 0.01
-#define VISIBLELIMIT 500 // for MOBIL  it's unncessary, and it shall be abandoned.
 #define SPEED_CRITICAL 60 // using for Asymmetric MOBIL
 #define DBL_MAX 1.7976931348623158e+308 
 #define DATAPATH "D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\"
 #define AFTPATH "D:\\Aimsun 8.1\\"
 
+// controllers on-off
 bool const needTestMsg = false;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
-
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
+bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
+
 
 // triggers
-double simulationTime_temp = 0; // for some codes that need be run only one time in one simulation step
-bool smartVehiclePenetrationRateRead = false;
+bool hasRanInThisTimeSetp = false; // for some codes that need be run only one time in one simulation step
+bool hasReadSmartVehiclePenetrationRate = false;
+bool hasInputQTable = false;
+bool haveOutPutFunctionsRan = false;
+bool haveInPutFunctionsRan = false;
+bool hasOutPutFilesInitiated = false;
 
 
+// for IDM, (C)ACC
 double const penetrationOfACC = 0;
 double const lowLimitOfACCTimeGap = 0.5;
 double const upLimitOfACCTimeGap = 0.7;
 
 
 // for Optimizing Working
-double optimizedPolitenessFactor, optimizedThreshold, optimizedSafeFactor; // for MOBIL p , a_th, b_safe
-double  penetrationOfSmartVehicles; // read from file
-
-int timeInverval = 450; // 450 sec = 8 mins, 8 x 30 =240 mins
-
-// q-learning
-struct
-{
-	float epsilon;
-	float learning_rate_r;
-	float alpha;
-
-	// 6^10*3 float ， 0.72 GB memory cost
-	// [4] Lane Number 
-	// [3] Actions:0 current 1 left 2 right
-	float q_table[6][6][6][6][6][6][6][6][6][4][3];
-
-	unsigned int stateID_last;
-	unsigned int action_last;
-
-}q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0},0,0 };
-
-
+double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
@@ -82,6 +66,26 @@ int optimiazedVehID = -1;//4000 4121 5070 // work only when   useIterationOptimi
 
 
 
+
+// q-learning data structure
+struct
+{
+	float epsilon;
+	float learning_rate_r;
+	float alpha;
+
+	// 6^10*3 float ， 0.72 GB memory cost
+	// a2	口	口    Left 
+	// a3	a1	口    Current
+	// a4	口	口	  Right
+	// [deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_μL][deta_sigmaL][deta_μR][deta_sigmaR][Actions] 10 Dimensions
+	// [3] Actions:0 current 1 left 2 right
+	float q_table[6][6][6][6][6][6][6][6][6][3];
+
+	unsigned int stateID_last;
+	unsigned int action_last;
+
+}q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0 },0,0 };
 
 
 
@@ -104,7 +108,7 @@ struct {
 	int preSectionID;
 
 	bool isSmartVehicle; // TEST for SV demand
-}vehicleODInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
+}allVehicleODInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
 
 struct TrajectoryData {
 	double time;
@@ -149,7 +153,7 @@ struct VehiclePathInfo {
 	int currSectionID;
 	int preLane; // using absolute network lane ID
 
-}optVehDataSet;
+}optVehDataSet = { 0 };
 
 
 //map sectionID->parameter
@@ -177,8 +181,7 @@ map<int, double> parameterSet = {
 	{ 998,0 },
 	{ 1002,0 },
 };
-int outPutRunTimes;
-int inPutParaRunTimes;
+
 
 
 list <int> impactedVehIDSet;
@@ -188,9 +191,6 @@ list <int> impactedVehIDSet;
 int const sequenceSectionID[23] = { 0,363,364,370,387,1022,952,949,386,395,935,404,974,982,967,406,414,423,986,990,994,998,1002 };
 
 
-
-int lcProfitOpenRunTime = 0;
-int lcProfitCloseRunTime = 0;
 
 /*************************** Function Declaration (custom) **************************/
 /*Method, Smart Demand from a outside file*/
@@ -394,21 +394,19 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 	state_diff_sd_left = getDiscretedState_Qlearning(diff_sd_left);
 	state_diff_sd_right = getDiscretedState_Qlearning(diff_sd_right);
 
-	int state_current_lane = vehicle->getIdCurrentLane();
 
 	unsigned int stateID = 0;
 
 	stateID =
-		state_diff_ac_left *(int)pow(10, 9)
-		+ state_diff_ac_right *(int)pow(10, 8)
-		+ state_diff_an_left* (int)pow(10, 7)
-		+ state_diff_ao  *(int)pow(10, 6)
-		+ state_diff_an_right * (int)pow(10, 5)
-		+ state_diff_mean_left* (int)pow(10, 4)
-		+ state_diff_sd_left *(int)pow(10, 3)
-		+ state_diff_mean_right *(int)pow(10, 2)
-		+ state_diff_sd_right *(int)pow(10, 1)
-		+ state_current_lane * (int)pow(10, 0);
+		state_diff_ac_left *(int)pow(10, 8)
+		+ state_diff_ac_right* (int)pow(10, 7)
+		+ state_diff_an_left  *(int)pow(10, 6)
+		+ state_diff_ao * (int)pow(10, 5)
+		+ state_diff_an_right* (int)pow(10, 4)
+		+ state_diff_mean_left *(int)pow(10, 3)
+		+ state_diff_sd_left *(int)pow(10, 2)
+		+ state_diff_mean_right *(int)pow(10, 1)
+		+ state_diff_sd_right * (int)pow(10, 0);
 
 	return stateID;
 }
@@ -470,14 +468,14 @@ int behavioralModelParticular::getMaxQValueAction(unsigned int stateID, A2SimVeh
 	int currentSection = vehicle->getIdCurrentSection();
 	int vehID = vehicle->getId();
 
-	for (int i = 0; i <= 9; ++i)
+	for (int i = 0; i <= 8; ++i)
 	{
 		stateCode[i] = stateID / int(pow(10, i)) % 10;
 	}
 
-	float currentDirectionQuality = q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
-	float leftDirectionqQuality = q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
-	float rightDirectionqQuality = q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
+	float currentDirectionQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
+	float leftDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
+	float rightDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
 	if ((curlane < maxlane)// left is possible
 		&& (leftDirectionqQuality > currentDirectionQuality&&leftDirectionqQuality >= rightDirectionqQuality)
 
@@ -602,7 +600,7 @@ float rewardQLearning(unsigned int stateID, int action)
 {
 	float reward = 0;
 	int stateCode[10] = { 0 };
-	for (int i = 0; i <= 9; ++i)
+	for (int i = 0; i <= 8; ++i)
 	{
 		stateCode[i] = stateID / int(pow(10, i)) % 10;
 
@@ -624,14 +622,14 @@ float rewardQLearning(unsigned int stateID, int action)
 float maxQActionValueForState(unsigned int stateID)
 {
 	int stateCode[10] = { 0 };
-	for (int i = 0; i <= 9; ++i)
+	for (int i = 0; i <= 8; ++i)
 	{
 		stateCode[i] = stateID / int(pow(10, i)) % 10;
 	}
 	float actionQValues[3] = {
-		q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0],
-		q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1],
-		q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2]
+		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0],
+		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1],
+		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2]
 	};
 
 	float max = actionQValues[0];
@@ -646,7 +644,7 @@ float maxQActionValueForState(unsigned int stateID)
 void updateQTable(unsigned int stateID, int action, int next_stateID)
 {
 	int stateCode[10] = { 0 };
-	for (int i = 0; i <= 9; ++i)
+	for (int i = 0; i <= 8; ++i)
 	{
 		stateCode[i] = stateID / int(pow(10, i)) % 10;
 
@@ -663,13 +661,13 @@ void updateQTable(unsigned int stateID, int action, int next_stateID)
 
 
 
-	q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+	q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
 		=
-		q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
 		+ q_LearningParameters.alpha*(
 			rewardQLearning(stateID, action)
 			+ q_LearningParameters.learning_rate_r * maxQActionValueForState(next_stateID)
-			- q_LearningParameters.q_table[stateCode[9]][stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+			- q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
 			);
 
 
@@ -776,12 +774,12 @@ bool isControlGroupVehicle(int referenceVehicleID, int testVehicleID)
 {
 
 	if (// 1. time window comparison
-		vehicleODInfoDataSet[testVehicleID].entryTime > vehicleODInfoDataSet[referenceVehicleID].entryTime - 30
-		&& vehicleODInfoDataSet[testVehicleID].entryTime < vehicleODInfoDataSet[referenceVehicleID].entryTime + 30
+		allVehicleODInfoDataSet[testVehicleID].entryTime > allVehicleODInfoDataSet[referenceVehicleID].entryTime - 30
+		&& allVehicleODInfoDataSet[testVehicleID].entryTime < allVehicleODInfoDataSet[referenceVehicleID].entryTime + 30
 		// 2. OD comparison
-		&& vehicleODInfoDataSet[testVehicleID].entrySection == vehicleODInfoDataSet[referenceVehicleID].entrySection
-		&&vehicleODInfoDataSet[testVehicleID].entryLane == vehicleODInfoDataSet[referenceVehicleID].entryLane
-		&&vehicleODInfoDataSet[testVehicleID].exitSection == vehicleODInfoDataSet[referenceVehicleID].exitSection
+		&& allVehicleODInfoDataSet[testVehicleID].entrySection == allVehicleODInfoDataSet[referenceVehicleID].entrySection
+		&&allVehicleODInfoDataSet[testVehicleID].entryLane == allVehicleODInfoDataSet[referenceVehicleID].entryLane
+		&&allVehicleODInfoDataSet[testVehicleID].exitSection == allVehicleODInfoDataSet[referenceVehicleID].exitSection
 		)
 	{
 		return true;
@@ -802,36 +800,36 @@ void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 
 
 	// record time infomation
-	if (vehicleODInfoDataSet[vehID].entryTime == 0)
-		vehicleODInfoDataSet[vehID].entryTime = currTime;
-	if (vehicleODInfoDataSet[vehID].exitTime < currTime)
-		vehicleODInfoDataSet[vehID].exitTime = currTime;
-	if (vehicleODInfoDataSet[vehID].exitTime - vehicleODInfoDataSet[vehID].entryTime > vehicleODInfoDataSet[vehID].totalTravelTime)
-		vehicleODInfoDataSet[vehID].totalTravelTime = vehicleODInfoDataSet[vehID].exitTime - vehicleODInfoDataSet[vehID].entryTime;
+	if (allVehicleODInfoDataSet[vehID].entryTime == 0)
+		allVehicleODInfoDataSet[vehID].entryTime = currTime;
+	if (allVehicleODInfoDataSet[vehID].exitTime < currTime)
+		allVehicleODInfoDataSet[vehID].exitTime = currTime;
+	if (allVehicleODInfoDataSet[vehID].exitTime - allVehicleODInfoDataSet[vehID].entryTime > allVehicleODInfoDataSet[vehID].totalTravelTime)
+		allVehicleODInfoDataSet[vehID].totalTravelTime = allVehicleODInfoDataSet[vehID].exitTime - allVehicleODInfoDataSet[vehID].entryTime;
 
 
 
 	// record path length section by section
-	if (currSectionID != vehicleODInfoDataSet[vehID].preSectionID)
+	if (currSectionID != allVehicleODInfoDataSet[vehID].preSectionID)
 	{
 		A2KSectionInf sectionInfo;
 		sectionInfo = AKIInfNetGetSectionANGInf(currSectionID);
 
-		vehicleODInfoDataSet[vehID].totalTravelPathLength += sectionInfo.length;
-		vehicleODInfoDataSet[vehID].preSectionID = currSectionID;
+		allVehicleODInfoDataSet[vehID].totalTravelPathLength += sectionInfo.length;
+		allVehicleODInfoDataSet[vehID].preSectionID = currSectionID;
 	}
 
 
 	// record OD 
 	if (getEntrySectionSequence(currSectionID) != -1)
 	{
-		vehicleODInfoDataSet[vehID].entrySection = currSectionID;
-		vehicleODInfoDataSet[vehID].entryLane = vehicle->getIdCurrentLane(); // since the lane changing cannot happened in the input sections which have only one lane. 
-		vehicleODInfoDataSet[vehID].isSmartVehicle = ((simVehicleParticular*)vehicle)->getIsSmartVehicle();
+		allVehicleODInfoDataSet[vehID].entrySection = currSectionID;
+		allVehicleODInfoDataSet[vehID].entryLane = vehicle->getIdCurrentLane(); // since the lane changing cannot happened in the input sections which have only one lane. 
+		allVehicleODInfoDataSet[vehID].isSmartVehicle = ((simVehicleParticular*)vehicle)->getIsSmartVehicle();
 	}
 	if (isExitSection(currSectionID))
 	{
-		vehicleODInfoDataSet[vehID].exitSection = currSectionID;
+		allVehicleODInfoDataSet[vehID].exitSection = currSectionID;
 
 	}
 
@@ -860,10 +858,10 @@ void recordOptVehiclePathLength(A2SimVehicle * vehicle)
 	}
 	else if (currentSectionID != optVehDataSet.preSectionID)
 	{
-		A2KSectionInf sectionInfo;
-		sectionInfo = AKIInfNetGetSectionANGInf(optVehDataSet.preSectionID);
+		A2KSectionInf preSectionInfo;
+		preSectionInfo = AKIInfNetGetSectionANGInf(optVehDataSet.preSectionID);
 
-		optVehDataSet.pathLengthBySection += sectionInfo.length;
+		optVehDataSet.pathLengthBySection += preSectionInfo.length;
 
 		optVehDataSet.preSectionID = currentSectionID;
 	}
@@ -1069,21 +1067,19 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int currSectionID)
 {
 
-	A2KSectionInf sectionInfo;
-	sectionInfo = AKIInfNetGetSectionANGInf(currSectionID);
 
 	TrajectoryData trajectoryDataPoint;
 	trajectoryDataPoint.time = currentTime;
 	trajectoryDataPoint.speed = vehicle->getSpeed(0);
-	trajectoryDataPoint.pathLengthPerSecond = optVehDataSet.totalTravelPathLength - sectionInfo.length + vehicle->getPosition(0); //Coupling with the recordpathlength, so the sequence of invoking should be noticed.
+	trajectoryDataPoint.pathLengthPerSecond = optVehDataSet.totalTravelPathLength;
 
 
-	if (needTestMsg && currentTime > 5740 && currentTime < 5760)
+	/*if (needTestMsg && currentTime > 5740 && currentTime < 5760)
 	{
 		char msg[200];
 		sprintf_s(msg, "%f,%f,%f,%d,%d", optVehDataSet.totalTravelPathLength, vehicle->getPosition(0), sectionInfo.length, sectionInfo.id, currSectionID);
 		AKIPrintString(msg);
-	}
+	}*/
 
 	double xback_temp = 0;
 	double yback_temp = 0;
@@ -1094,7 +1090,7 @@ void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int cu
 
 void inputParameterSetFromAFT()
 {
-	if (inPutParaRunTimes == 0)
+	if (!haveInPutFunctionsRan)
 	{
 
 		string parameterFullPath;
@@ -1117,7 +1113,7 @@ void inputParameterSetFromAFT()
 			sprintf_s(msg, "SmartVehID=%d MOBIL Parameters loaded. (P,T)=(%f,%f)", optimiazedVehID, parameterSet[363], parameterSet[364]);
 			AKIPrintString(msg);*/
 
-		inPutParaRunTimes = 1;
+		haveInPutFunctionsRan = true;
 	}
 
 }
@@ -1125,12 +1121,107 @@ void inputParameterSetFromAFT()
 
 void inputQTable()
 {
+	if (!hasInputQTable)
+	{
+		string inputQTableFullPath;
+		string inputQTableFileName = "QTable.dat";
+		inputQTableFullPath = DATAPATH + inputQTableFileName;
+		ifstream inputQTableFile;
+		inputQTableFile.open(inputQTableFullPath, ios::in);
+		if (inputQTableFile.is_open())
+		{
+			for (int deta_a1L = 0; deta_a1L <= 5; ++deta_a1L)
+			{
+				for (int deta_a1R = 0; deta_a1R <= 5; ++deta_a1R)
+				{
+					for (int deta_a2L = 0; deta_a2L <= 5; ++deta_a2L)
+					{
+						for (int deta_a3 = 0; deta_a3 <= 5; ++deta_a3)
+						{
+							for (int deta_a4R = 0; deta_a4R <= 5; ++deta_a4R)
+							{
+								for (int deta_miuL = 0; deta_miuL <= 5; ++deta_miuL)
+								{
+									for (int deta_sigmaL = 0; deta_sigmaL <= 5; ++deta_sigmaL)
+									{
+										for (int deta_miuR = 0; deta_miuR <= 5; ++deta_miuR)
+										{
+											for (int deta_sigmaR = 0; deta_sigmaR <= 5; ++deta_sigmaR)
+											{
+												for (int actions = 0; actions <= 2; ++actions)
+												{
+													inputQTableFile >>
+														q_LearningParameters.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions];
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 
+		inputQTableFile.close();
+
+		hasInputQTable = true;
+	}
 }
 void outPutQTable()
 {
-	q_LearningParameters.q_table[][][][][][][][][]
+	string outPutQTableFullPath;
+	string outPutQTableFileName = "QTable.dat";
+	outPutQTableFullPath = DATAPATH + outPutQTableFileName;
+	ofstream outPutQTable;
+	outPutQTable.open(outPutQTableFullPath, ios::trunc);
+
+	// 6^10*3 float ， 0.72 GB memory cost
+	// a2	口	口    Left 
+	// a3	a1	口    Current
+	// a4	口	口	  Right
+	// [deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions] 10 Dimensions
+	// [3] Actions:0 current 1 left 2 right
+	for (int deta_a1L = 0; deta_a1L <= 5; ++deta_a1L)
+	{
+		for (int deta_a1R = 0; deta_a1R <= 5; ++deta_a1R)
+		{
+			for (int deta_a2L = 0; deta_a2L <= 5; ++deta_a2L)
+			{
+				for (int deta_a3 = 0; deta_a3 <= 5; ++deta_a3)
+				{
+					for (int deta_a4R = 0; deta_a4R <= 5; ++deta_a4R)
+					{
+						for (int deta_miuL = 0; deta_miuL <= 5; ++deta_miuL)
+						{
+							for (int deta_sigmaL = 0; deta_sigmaL <= 5; ++deta_sigmaL)
+							{
+								for (int deta_miuR = 0; deta_miuR <= 5; ++deta_miuR)
+								{
+									for (int deta_sigmaR = 0; deta_sigmaR <= 5; ++deta_sigmaR)
+									{
+										for (int actions = 0; actions <= 2; ++actions)
+										{
+											outPutQTable
+												<< q_LearningParameters.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions] << "\t";
+										}
+										outPutQTable << endl;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	outPutQTable.close();
+
 }
+
+//filter control Group Vehicles from allVehicleODInfo and output
 void outPutControlGroupVehiclesODInfo()
 {
 	string outPutControlGroupVehicleODInfoFullPath;
@@ -1156,12 +1247,12 @@ void outPutControlGroupVehiclesODInfo()
 		{
 			outPutControlGroupVehicleODInfo
 				<< vehID << "\t"
-				<< vehicleODInfoDataSet[vehID].entrySection << "\t"
-				<< vehicleODInfoDataSet[vehID].exitSection << "\t"
-				<< vehicleODInfoDataSet[vehID].entryTime << "\t"
-				<< vehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
-				<< vehicleODInfoDataSet[vehID].totalTravelTime << "\t"
-				<< vehicleODInfoDataSet[vehID].totalTravelTime / vehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << endl;
+				<< allVehicleODInfoDataSet[vehID].entrySection << "\t"
+				<< allVehicleODInfoDataSet[vehID].exitSection << "\t"
+				<< allVehicleODInfoDataSet[vehID].entryTime << "\t"
+				<< allVehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
+				<< allVehicleODInfoDataSet[vehID].totalTravelTime << "\t"
+				<< allVehicleODInfoDataSet[vehID].totalTravelTime / allVehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << endl;
 		}
 	}
 	outPutControlGroupVehicleODInfo << endl;
@@ -1194,13 +1285,13 @@ void outPutAllVehicleODInfo()
 	{
 		outPutAllVehicleODInfo
 			<< vehID << "\t"
-			<< vehicleODInfoDataSet[vehID].entrySection << "\t"
-			<< vehicleODInfoDataSet[vehID].exitSection << "\t"
-			<< vehicleODInfoDataSet[vehID].entryTime << "\t"
-			<< vehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
-			<< vehicleODInfoDataSet[vehID].totalTravelTime << "\t"
-			<< vehicleODInfoDataSet[vehID].totalTravelTime / vehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << "\t"
-			<< vehicleODInfoDataSet[vehID].isSmartVehicle
+			<< allVehicleODInfoDataSet[vehID].entrySection << "\t"
+			<< allVehicleODInfoDataSet[vehID].exitSection << "\t"
+			<< allVehicleODInfoDataSet[vehID].entryTime << "\t"
+			<< allVehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
+			<< allVehicleODInfoDataSet[vehID].totalTravelTime << "\t"
+			<< allVehicleODInfoDataSet[vehID].totalTravelTime / allVehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << "\t"
+			<< allVehicleODInfoDataSet[vehID].isSmartVehicle
 			<< endl;
 
 	}
@@ -1761,12 +1852,14 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 	*/
 
 	// method 2, using randomly denoting
-		if (!smartVehiclePenetrationRateRead)
+		if (useOutSideInPut_SmartVehiclePenetrationRate && (!hasReadSmartVehiclePenetrationRate))
 		{
 			readSmartVehiclePenetrationRate();
-			smartVehiclePenetrationRateRead = true;
+			hasReadSmartVehiclePenetrationRate = true;
 		}
-		if (AKIGetRandomNumber() < penetrationOfSmartVehicles)
+
+
+		if (AKIGetRandomNumber() < penetrationOfSmartVehicles) // penetrationOfSmartVehicles, default value = 0
 		{
 			newVehicle->setIsSmartVehicle(true);
 		}
@@ -1810,17 +1903,16 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 
 
-	if (vehicle_particular_Temp->getIsSmartVehicle())
+	if (vehicle_particular_Temp->getIsSmartVehicle() || vehID == optimiazedVehID)
 	{
 
-		inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
-
+		//inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
+		inputQTable();
 
 		//recordOptVehicleTravelTime(currTime);
-		recordOptVehiclePathLength(vehicle);
+		//recordOptVehiclePathLength(vehicle);
 		//recordOptVehiclLaneChangingInfo(vehicle);
-		//recordOptVehiclTrajectory(vehicle, currTime, currSectionID);
-
+		//recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
 
 		/******TEST for locating special position*********/
 		/*if (needTestMsg &&
@@ -1859,14 +1951,12 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 
 
-	//recordImpactedVehID(vehID, currTime, currSectionID);
-
 	//recordAllVehicleODInfo(vehicle);
 
 
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
-	if (outPutRunTimes == 0 && currTime > 14399)
+	if ((!haveOutPutFunctionsRan) && currTime > 14399)
 	{
 		//outPutOptVehData();
 
@@ -1876,15 +1966,14 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		//outPutOptVehLaneChangingDetials();
 
-		//outPutImpactedVehicleIDSet();
-
 		//outPutAllVehicleODInfo();
 
-		//	outPutControlGroupVehiclesODInfo();
+		//outPutControlGroupVehiclesODInfo();
+		
+		outPutQTable();
 
 
-
-		outPutRunTimes = 1;
+		haveOutPutFunctionsRan = true;
 	}
 
 
@@ -2400,8 +2489,8 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 
 		//optimizedThreshold = parameterSet[currSectionID];
-		optimizedPolitenessFactor = parameterSet[363];
-		optimizedThreshold = parameterSet[364];
+		double optimizedPolitenessFactor = parameterSet[363];
+		double optimizedThreshold = parameterSet[364];
 
 		direction = MOBILDirection(vehicle, optimizedPolitenessFactor, optimizedThreshold);
 
@@ -2426,19 +2515,64 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		vehicle->applyLaneChanging(direction, threadId); // this function includes the gap acceptance. so if direction is not acceptable, aimsun will consider it
 		return true;
 	}
-	else if (vehicle_particular_Temp->getIsSmartVehicle() && useQLearning)
+	else if (vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle() && useQLearning)
 	{
-
 		unsigned int stateID = getStateID_QLearning(vehicle);
-
-
-
 
 		updateQTable(q_LearningParameters.stateID_last, q_LearningParameters.action_last, stateID);
 
-
 		int action = getQLearningDecisionAction(vehicle);
 		direction = convertQActionToDirection(action);
+
+		/************ TEST OUTPUT ************/
+		if (needTestMsg&&direction!=0)
+		{
+
+			string laneChangeTestName = "TEST_LCacceleration.txt";
+			string laneChangeTestNamePath;
+			laneChangeTestNamePath = DATAPATH + laneChangeTestName;
+			ofstream laneChangeTest;
+			if (!hasOutPutFilesInitiated)
+			{
+				laneChangeTest.open(laneChangeTestNamePath, ios::trunc);
+				laneChangeTest << "TIME" << currTime << endl;
+				laneChangeTest.close();
+				hasOutPutFilesInitiated = true;
+			}
+
+			int stateCode[10] = { 0 };
+			for (int i = 0; i <= 8; ++i)
+			{
+				stateCode[i] = stateID / int(pow(10, i)) % 10;
+			}
+
+			float currentDirectionQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
+			float leftDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
+			float rightDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
+
+
+			laneChangeTest.open(laneChangeTestNamePath, ios::app);
+
+
+			laneChangeTest
+				<< "TIME" << currTime << "\n"
+				<< "StateID"<<stateID<<"\n"
+				<< "currentDirectionQuality = " << currentDirectionQuality << "\n"
+				<< "leftDirectionqQuality = " << leftDirectionqQuality << "\n"
+				<< "rightDirectionqQuality = " << rightDirectionqQuality << "\n"
+				<< "ID=" << vehID << "\n"
+				<< "CurrentSection=" << numSect << "\n"
+				<< "curLane=" << currLane << "\n"
+				<< "maxLanes=" << maxLanes << "\n"
+				<< "current_speed=" << vehicle->getSpeed(vehicle->isUpdated()) << "\n"
+				<< "direction=" << direction << "\n\n" << endl;
+
+
+			laneChangeTest.close();
+
+		}
+		/************ TEST OUTPUT ************/
+
 
 		vehicle->applyLaneChanging(direction, threadId);
 
@@ -3274,6 +3408,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 
 
 	/*****   record the ac_profit and the af_profit   *****/
+	/*
 	double ditance_to_left_leader = 0;
 	double ditance_to_right_leader = 0;
 	double ditance_to_cur_leader = 0;
@@ -3342,7 +3477,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 	*/
 
 	/************ TEST OUTPUT ************/
-
+	/*
 	if (needTestMsg)
 	{
 		double currentTime = AKIGetCurrentSimulationTime();
@@ -3437,7 +3572,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 			laneChangeTest.close();
 		}
 	}
-
+	*/
 
 	return direction;
 }
