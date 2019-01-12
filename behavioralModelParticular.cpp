@@ -1432,7 +1432,7 @@ void outPutOptVehData()
 		<< optVehDataSet.exitTime << "\t"
 		<< optVehDataSet.totalTravelTime << "\t"
 		<< optVehDataSet.totalTravelPathLength << "\t"
-		<< optVehDataSet.totalTravelTime / optVehDataSet.totalTravelPathLength * 1000;
+		<< optVehDataSet.totalTravelTime / optVehDataSet.totalTravelPathLength * 1000 << endl;
 	outPutData.close();
 
 }
@@ -1912,7 +1912,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		//recordOptVehicleTravelTime(currTime);
 		//recordOptVehiclePathLength(vehicle);
 		//recordOptVehiclLaneChangingInfo(vehicle);
-		//recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
+	//	recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
 
 		/******TEST for locating special position*********/
 		/*if (needTestMsg &&
