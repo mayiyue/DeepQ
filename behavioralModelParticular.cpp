@@ -1966,7 +1966,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		outPutOptVehLaneChangingDetials();
 
-		outPutAllVehicleODInfo();
+		//outPutAllVehicleODInfo();
 
 		outPutControlGroupVehiclesODInfo();
 		
