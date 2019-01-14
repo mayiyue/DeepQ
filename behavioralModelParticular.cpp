@@ -37,7 +37,7 @@ bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
-bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
+bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
 
 
 // triggers
@@ -62,7 +62,7 @@ double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetr
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = -1;//4000 4121 5070 // work only when   useIterationOptimization = false
+int optimiazedVehID = 5070;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
 
@@ -235,10 +235,10 @@ int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 	{
 		action = getMaxQValueAction(stateID, vehicle);
 	}
-	else
-	{
-		action = getAvailableActionRandomly_Qlearning(stateID, vehicle);
-	}
+	//else
+	//{
+	//	action = getAvailableActionRandomly_Qlearning(stateID, vehicle);
+	//}
 
 
 
@@ -1909,10 +1909,10 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		//inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
 		inputQTable();
 
-		//recordOptVehicleTravelTime(currTime);
-		//recordOptVehiclePathLength(vehicle);
-		//recordOptVehiclLaneChangingInfo(vehicle);
-	//	recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
+		recordOptVehicleTravelTime(currTime);
+		recordOptVehiclePathLength(vehicle);
+		recordOptVehiclLaneChangingInfo(vehicle);
+		recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
 
 		/******TEST for locating special position*********/
 		/*if (needTestMsg &&
@@ -1951,26 +1951,26 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 
 
-	//recordAllVehicleODInfo(vehicle);
+	recordAllVehicleODInfo(vehicle);
 
 
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if ((!haveOutPutFunctionsRan) && currTime > 14399)
 	{
-		//outPutOptVehData();
+		outPutOptVehData();
 
 		//outPutOptVehPerformance();
 
-		//outPutOptVehTrajectoryDataSet();
+		outPutOptVehTrajectoryDataSet();
 
-		//outPutOptVehLaneChangingDetials();
+		outPutOptVehLaneChangingDetials();
 
-		//outPutAllVehicleODInfo();
+		outPutAllVehicleODInfo();
 
-		//outPutControlGroupVehiclesODInfo();
+		outPutControlGroupVehiclesODInfo();
 		
-		outPutQTable();
+		//outPutQTable();
 
 
 		haveOutPutFunctionsRan = true;
