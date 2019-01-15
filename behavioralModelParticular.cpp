@@ -37,7 +37,7 @@ bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
-bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
+bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
 
 
 // triggers
@@ -1907,12 +1907,14 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	{
 
 		//inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
-		inputQTable();
-
-		recordOptVehicleTravelTime(currTime);
-		recordOptVehiclePathLength(vehicle);
-		recordOptVehiclLaneChangingInfo(vehicle);
-		recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
+		if (useQLearning) 
+		{
+			inputQTable();
+		}
+		//recordOptVehicleTravelTime(currTime);
+		//recordOptVehiclePathLength(vehicle);
+		//recordOptVehiclLaneChangingInfo(vehicle);
+		//recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
 
 		/******TEST for locating special position*********/
 		/*if (needTestMsg &&
@@ -1951,24 +1953,24 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 
 
-	recordAllVehicleODInfo(vehicle);
+	//recordAllVehicleODInfo(vehicle);
 
 
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if ((!haveOutPutFunctionsRan) && currTime > 14399)
 	{
-		outPutOptVehData();
+		//outPutOptVehData();
 
 		//outPutOptVehPerformance();
 
-		outPutOptVehTrajectoryDataSet();
+	    //outPutOptVehTrajectoryDataSet();
 
-		outPutOptVehLaneChangingDetials();
+		//outPutOptVehLaneChangingDetials();
 
 		//outPutAllVehicleODInfo();
 
-		outPutControlGroupVehiclesODInfo();
+		//outPutControlGroupVehiclesODInfo();
 		
 		//outPutQTable();
 
