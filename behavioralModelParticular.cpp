@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <fstream>
 #include <cmath>
+#include <ctime>
 #include <iostream>
 #include <iomanip>
 #include <cstring>
@@ -35,9 +36,9 @@ bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
-bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
+bool const useIterationOptimization = true; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
-bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
+bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
 
 
 // triggers
@@ -84,8 +85,9 @@ struct
 
 	unsigned int stateID_last;
 	unsigned int action_last;
+	double total_reward;
 
-}q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0 },0,0 };
+}q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0 },0,0,0 };
 
 
 
@@ -1169,13 +1171,23 @@ void inputQTable()
 		hasInputQTable = true;
 	}
 }
-void outPutQTable()
+void outPutQTableAndTotalReward()
 {
 	string outPutQTableFullPath;
 	string outPutQTableFileName = "QTable.dat";
 	outPutQTableFullPath = DATAPATH + outPutQTableFileName;
 	ofstream outPutQTable;
 	outPutQTable.open(outPutQTableFullPath, ios::trunc);
+
+
+	string outPutTotalRewardFullPath;
+	string outPutTotalRewardFileName = "TotalReward.dat";
+	outPutTotalRewardFullPath = DATAPATH + outPutTotalRewardFileName;
+	ofstream outPutTotalReward;
+	outPutTotalReward.open(outPutTotalRewardFullPath, ios::app);
+
+
+
 
 	// 6^10*3 float ， 0.72 GB memory cost
 	// a2	口	口    Left 
@@ -1205,6 +1217,7 @@ void outPutQTable()
 										{
 											outPutQTable
 												<< q_LearningParameters.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions] << "\t";
+											q_LearningParameters.total_reward += q_LearningParameters.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions];
 										}
 										outPutQTable << endl;
 									}
@@ -1217,8 +1230,17 @@ void outPutQTable()
 		}
 	}
 
-	outPutQTable.close();
+	
+	time_t now = time(0);
+	char* dt = ctime(&now);
 
+	outPutTotalReward
+		<< q_LearningParameters.total_reward << "\t"
+		<< dt << endl;
+
+
+	outPutQTable.close();
+	outPutTotalReward.close();
 }
 
 //filter control Group Vehicles from allVehicleODInfo and output
@@ -1970,7 +1992,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		//outPutControlGroupVehiclesODInfo();
 		
-		outPutQTable();
+		outPutQTableAndTotalReward();
 
 
 		haveOutPutFunctionsRan = true;
@@ -2515,7 +2537,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		vehicle->applyLaneChanging(direction, threadId); // this function includes the gap acceptance. so if direction is not acceptable, aimsun will consider it
 		return true;
 	}
-	else if (vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle() && useQLearning)
+	else if ((vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle()) && useQLearning)
 	{
 		unsigned int stateID = getStateID_QLearning(vehicle);
 
