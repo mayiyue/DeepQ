@@ -82,10 +82,10 @@ struct
 	// [3] Actions:0 current 1 left 2 right
 	float q_table[6][6][6][6][6][6][6][6][6][3];
 
-	unsigned int stateID_last;
-	unsigned int action_last;
+	unsigned int stateID_last[16000]; // stateID_last[vehicle ID]
+	unsigned int action_last[16000]; // action_last[vehicle ID]
 
-}q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0 },0,0 };
+}q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0 },{0},{0} };
 
 
 
@@ -2521,7 +2521,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	{
 		unsigned int stateID = getStateID_QLearning(vehicle);
 
-		updateQTable(q_LearningParameters.stateID_last, q_LearningParameters.action_last, stateID);
+		updateQTable(q_LearningParameters.stateID_last[vehID], q_LearningParameters.action_last[vehID], stateID);
 
 		int action = getQLearningDecisionAction(vehicle);
 		direction = convertQActionToDirection(action);
@@ -2578,8 +2578,8 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		vehicle->applyLaneChanging(direction, threadId);
 
-		q_LearningParameters.action_last = action;
-		q_LearningParameters.stateID_last = stateID;
+		q_LearningParameters.action_last[vehID] = action;
+		q_LearningParameters.stateID_last[vehID] = stateID;
 
 
 		return true;
