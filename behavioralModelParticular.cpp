@@ -5,6 +5,7 @@
 2018-9-27 9:58:44已完成 VVVV 3. 使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28
 4. 写一个debug类或者一些debug函数，用于调试，摆脱传统的注释、运行部分 2018-9-20 13:55:25
 5. 2018-11-7 12:16:30 OPTvehicle数据结构中 pathlength有耦合
+6. 2019-3-7 15:09:18 把那些模块做成类，避免耦合
 */
 
 #include "behavioralModelParticular.h"
@@ -63,7 +64,7 @@ double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetr
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = 4000;//4000 4121 5070 // work only when   useIterationOptimization = false
+int optimiazedVehID = -1;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
 
