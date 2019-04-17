@@ -85,10 +85,13 @@ struct
 	float q_table[6][6][6][6][6][6][6][6][6][3];
 
 	unsigned int stateID_last[16000]; // stateID_last[vehicle ID]
-	unsigned int action_last[16000]; // action_last[vehicle ID]
+	unsigned int action_last[16000]; // action_last[vehicle ID] 
+	
+	double previous_acceleration; // for computing reward 
+
 	double total_reward;
 
-}q_LearningParameters = { (float)0.95,(float)0.8,(float)0.01,{ (float)0 },{0},{0},0 };
+}q_Learning = { (float)0.95,(float)0.8,(float)0.01,{ (float)0 },{0},{0},0 };
 
 
 
@@ -119,6 +122,7 @@ struct TrajectoryData {
 	double coordinateY;
 	double pathLengthPerSecond;
 	double speed;
+	double acceleration;
 };
 struct VehiclePathInfo {
 
@@ -234,7 +238,7 @@ int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 
 	int action = 0;
 	unsigned int stateID = getStateID_QLearning(vehicle);
-	if (AKIGetRandomNumber() < q_LearningParameters.epsilon)
+	if (AKIGetRandomNumber() < q_Learning.epsilon)
 	{
 		action = getMaxQValueAction(stateID, vehicle);
 	}
@@ -426,7 +430,7 @@ int behavioralModelParticular::getDiscretedState_Qlearning(double diff_value)
 		state = 2;
 	else if (diff_value > 0 && diff_value <= 0.5)
 		state = 3;
-	else if (diff_value > 0.5&& diff_value <= 1)
+	else if (diff_value > 0.5 && diff_value <= 1)
 		state = 4;
 	else if (diff_value > 1)
 		state = 5;
@@ -476,9 +480,9 @@ int behavioralModelParticular::getMaxQValueAction(unsigned int stateID, A2SimVeh
 		stateCode[i] = stateID / int(pow(10, i)) % 10;
 	}
 
-	float currentDirectionQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
-	float leftDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
-	float rightDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
+	float currentDirectionQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
+	float leftDirectionqQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
+	float rightDirectionqQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
 	if ((curlane < maxlane)// left is possible
 		&& (leftDirectionqQuality > currentDirectionQuality&&leftDirectionqQuality >= rightDirectionqQuality)
 
@@ -599,27 +603,10 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(unsigned int
 	}
 }
 
-float rewardQLearning(unsigned int stateID, int action)
+float getRewardQLearning(double previous_acceleration, double current_acceleartion)
 {
 	float reward = 0;
-	int stateCode[10] = { 0 };
-	for (int i = 0; i <= 8; ++i)
-	{
-		stateCode[i] = stateID / int(pow(10, i)) % 10;
-
-	}
-	if (action == 1)
-	{
-		reward = (float)stateCode[8]; // state_diff_ac_left
-	}
-	else if (action == 2)
-	{
-		reward = (float)stateCode[9]; // state_diff_ac_right
-	}
-	else // action == 0
-	{
-		reward = 0; //it may be get_IDM_acceleration(vehicle, pVehCurDw);
-	}
+	reward = current_acceleartion - previous_acceleration;
 	return reward;
 }
 float maxQActionValueForState(unsigned int stateID)
@@ -630,9 +617,9 @@ float maxQActionValueForState(unsigned int stateID)
 		stateCode[i] = stateID / int(pow(10, i)) % 10;
 	}
 	float actionQValues[3] = {
-		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0],
-		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1],
-		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2]
+		q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0],
+		q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1],
+		q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2]
 	};
 
 	float max = actionQValues[0];
@@ -644,12 +631,12 @@ float maxQActionValueForState(unsigned int stateID)
 
 }
 
-void updateQTable(unsigned int stateID, int action, int next_stateID)
+void updateQTable(unsigned int previous_stateID, int action, int current_stateID,double previous_acceleration, double current_acceleration)
 {
 	int stateCode[10] = { 0 };
 	for (int i = 0; i <= 8; ++i)
 	{
-		stateCode[i] = stateID / int(pow(10, i)) % 10;
+		stateCode[i] = previous_stateID / int(pow(10, i)) % 10;
 
 	}
 
@@ -657,20 +644,22 @@ void updateQTable(unsigned int stateID, int action, int next_stateID)
 	如果在当前时刻更新Q表，当前时刻的action应用后下一时刻的state不一定是当前时刻“预测”的state，应该用预测state还是下一时刻实际的state作为next_state?
 	应该在哪一时刻更新Q表？
 	如果apply之后AIMSUN并不能完整的执行，那么这一部分必须要反映到Qlearning里
+	——在下一仿真步更新Q表
 	*/
 	//getNextStateID_Qlearning(vehicle);
 
 
 
 
+	// Q(S,A) <- Q(S,A) + alpha[R + learning_rate_r * MaxQ(S',a) - Q(S,A)]
 
-	q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+	q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
 		=
-		q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
-		+ q_LearningParameters.alpha*(
-			rewardQLearning(stateID, action)
-			+ q_LearningParameters.learning_rate_r * maxQActionValueForState(next_stateID)
-			- q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+		q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+		+ q_Learning.alpha*(
+			getRewardQLearning(previous_acceleration, current_acceleration)
+			+ q_Learning.learning_rate_r * maxQActionValueForState(current_stateID)
+			- q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
 			);
 
 
@@ -1087,6 +1076,8 @@ void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int cu
 	double xback_temp = 0;
 	double yback_temp = 0;
 	vehicle->getCoordinates(trajectoryDataPoint.coordinateX, trajectoryDataPoint.coordinateY, xback_temp, yback_temp);
+
+
 	optVehDataSet.trajectoryDataSet.push_back(trajectoryDataPoint);
 }
 
@@ -1154,7 +1145,7 @@ void inputQTable()
 												for (int actions = 0; actions <= 2; ++actions)
 												{
 													inputQTableFile >>
-														q_LearningParameters.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions];
+														q_Learning.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions];
 												}
 											}
 										}
@@ -1217,8 +1208,8 @@ void outPutQTableAndTotalReward()
 										for (int actions = 0; actions <= 2; ++actions)
 										{
 											outPutQTable
-												<< q_LearningParameters.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions] << "\t";
-											q_LearningParameters.total_reward += q_LearningParameters.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions];
+												<< q_Learning.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions] << "\t";
+											q_Learning.total_reward += q_Learning.q_table[deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_miuL][deta_sigmaL][deta_miuR][deta_sigmaR][actions];
 										}
 										outPutQTable << endl;
 									}
@@ -1236,7 +1227,7 @@ void outPutQTableAndTotalReward()
 	char* dt = ctime(&now);
 
 	outPutTotalReward
-		<< q_LearningParameters.total_reward << "\t"
+		<< q_Learning.total_reward << "\t"
 		<< dt << endl;
 
 
@@ -2543,11 +2534,19 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	else if ((vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle()) && useQLearning)
 	{
 		unsigned int stateID = getStateID_QLearning(vehicle);
+		A2SimVehicle *pVehCurUp = NULL;
+		A2SimVehicle *pVehCurDw = NULL;
+		double shiftCurUp = 0, shiftCurDw = 0;
+		//get current lane follower and leader
+		vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
+		double current_acceleration = get_IDM_acceleration(vehicle, pVehCurDw);
 
-		updateQTable(q_LearningParameters.stateID_last[vehID], q_LearningParameters.action_last[vehID], stateID);
+
+		updateQTable(q_Learning.stateID_last[vehID], q_Learning.action_last[vehID], stateID, q_Learning.previous_acceleration,current_acceleration);
 
 		int action = getQLearningDecisionAction(vehicle);
 		direction = convertQActionToDirection(action);
+
 
 		/************ TEST OUTPUT ************/
 		if (needTestMsg&&direction!=0)
@@ -2571,9 +2570,9 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 				stateCode[i] = stateID / int(pow(10, i)) % 10;
 			}
 
-			float currentDirectionQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
-			float leftDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
-			float rightDirectionqQuality = q_LearningParameters.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
+			float currentDirectionQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][0];
+			float leftDirectionqQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
+			float rightDirectionqQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
 
 
 			laneChangeTest.open(laneChangeTestNamePath, ios::app);
@@ -2601,8 +2600,10 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		vehicle->applyLaneChanging(direction, threadId);
 
-		q_LearningParameters.action_last[vehID] = action;
-		q_LearningParameters.stateID_last[vehID] = stateID;
+
+		q_Learning.previous_acceleration = current_acceleration;
+		q_Learning.action_last[vehID] = action;
+		q_Learning.stateID_last[vehID] = stateID;
 
 
 		return true;
