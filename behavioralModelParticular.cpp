@@ -37,7 +37,7 @@ bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
-bool const useIterationOptimization = true; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
+bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
 bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
 
@@ -58,7 +58,7 @@ double const upLimitOfACCTimeGap = 0.7;
 
 
 // for Optimizing Working
-double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+double  penetrationOfSmartVehicles = 0.3; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
@@ -87,7 +87,7 @@ struct
 	unsigned int stateID_last[16000]; // stateID_last[vehicle ID]
 	unsigned int action_last[16000]; // action_last[vehicle ID] 
 	
-	double previous_acceleration; // for computing reward 
+	double previous_acceleration[16000]; // for computing reward, [vehicle ID] 
 
 	double total_reward;
 
@@ -1228,7 +1228,7 @@ void outPutQTableAndTotalReward()
 
 	outPutTotalReward
 		<< q_Learning.total_reward << "\t"
-		<< dt << endl;
+		<< dt;
 
 
 	outPutQTable.close();
@@ -2542,7 +2542,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		double current_acceleration = get_IDM_acceleration(vehicle, pVehCurDw);
 
 
-		updateQTable(q_Learning.stateID_last[vehID], q_Learning.action_last[vehID], stateID, q_Learning.previous_acceleration,current_acceleration);
+		updateQTable(q_Learning.stateID_last[vehID], q_Learning.action_last[vehID], stateID, q_Learning.previous_acceleration[vehID],current_acceleration);
 
 		int action = getQLearningDecisionAction(vehicle);
 		direction = convertQActionToDirection(action);
@@ -2601,7 +2601,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		vehicle->applyLaneChanging(direction, threadId);
 
 
-		q_Learning.previous_acceleration = current_acceleration;
+		q_Learning.previous_acceleration[vehID] = current_acceleration;
 		q_Learning.action_last[vehID] = action;
 		q_Learning.stateID_last[vehID] = stateID;
 
