@@ -33,7 +33,7 @@ using namespace std;
 
 // controllers on-off
 bool const needTestMsg = false;
-bool const isTrainingQLearning = true;
+bool const isTrainingQLearning = false;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
@@ -59,13 +59,13 @@ double const upLimitOfACCTimeGap = 0.7;
 
 
 // for Optimizing Working
-double  penetrationOfSmartVehicles = 0.3; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = -1;//4000 4121 5070 // work only when   useIterationOptimization = false
+int optimiazedVehID = 4000;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
 
@@ -1937,11 +1937,18 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		{
 			inputQTable();
 		}
-		//recordOptVehicleTravelTime(currTime);
-		//recordOptVehiclePathLength(vehicle);
-		//recordOptVehiclLaneChangingInfo(vehicle);
-		//recordOptVehiclTrajectory(vehicle,currTime,currSectionID);
+		if (isTrainingQLearning)
+		{
 
+		}
+		else
+		{
+			recordOptVehicleTravelTime(currTime);
+			recordOptVehiclePathLength(vehicle);
+			recordOptVehiclLaneChangingInfo(vehicle);
+			recordOptVehiclTrajectory(vehicle, currTime, currSectionID);
+		}
+	
 		/******TEST for locating special position*********/
 		/*if (needTestMsg &&
 			(currSectionID == 949
@@ -1980,9 +1987,12 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	if (isTrainingQLearning)
 	{
+		
+	}
+	else
+	{
 		recordAllVehicleODInfo(vehicle);
 	}
-
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if ((!haveOutPutFunctionsRan) && currTime > 14399)
