@@ -33,6 +33,7 @@ using namespace std;
 
 // controllers on-off
 bool const needTestMsg = false;
+bool const isTrainingQLearning = true;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
@@ -631,36 +632,47 @@ float maxQActionValueForState(unsigned int stateID)
 
 }
 
-void updateQTable(unsigned int previous_stateID, int action, int current_stateID,double previous_acceleration, double current_acceleration)
+void behavioralModelParticular::updateQTable(A2SimVehicle *vehicle)
 {
+	int vehID = vehicle->getId();
+	unsigned int previous_stateID = q_Learning.stateID_last[vehID];
+	int previous_action = q_Learning.action_last[vehID];
+	unsigned int current_stateID = getStateID_QLearning(vehicle);
+	A2SimVehicle *pVehCurUp = NULL;
+	A2SimVehicle *pVehCurDw = NULL;
+	double shiftCurUp = 0, shiftCurDw = 0;
+	//get current lane follower and leader
+	vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
+	double current_acceleration = get_IDM_acceleration(vehicle, pVehCurDw);
+	double previous_acceleration = q_Learning.previous_acceleration[vehID];
+
 	int stateCode[10] = { 0 };
 	for (int i = 0; i <= 8; ++i)
 	{
 		stateCode[i] = previous_stateID / int(pow(10, i)) % 10;
-
 	}
-
-	/*
-	如果在当前时刻更新Q表，当前时刻的action应用后下一时刻的state不一定是当前时刻“预测”的state，应该用预测state还是下一时刻实际的state作为next_state?
-	应该在哪一时刻更新Q表？
-	如果apply之后AIMSUN并不能完整的执行，那么这一部分必须要反映到Qlearning里
-	——在下一仿真步更新Q表
-	*/
-	//getNextStateID_Qlearning(vehicle);
 
 
 
 
 	// Q(S,A) <- Q(S,A) + alpha[R + learning_rate_r * MaxQ(S',a) - Q(S,A)]
-
-	q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+	q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][previous_action]
 		=
-		q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+		q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][previous_action]
 		+ q_Learning.alpha*(
 			getRewardQLearning(previous_acceleration, current_acceleration)
 			+ q_Learning.learning_rate_r * maxQActionValueForState(current_stateID)
-			- q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][action]
+			- q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][previous_action]
 			);
+
+
+
+
+	q_Learning.previous_acceleration[vehID] = current_acceleration;
+	q_Learning.action_last[vehID] = previous_action;
+	q_Learning.stateID_last[vehID] = current_stateID;
+
+
 
 
 }
@@ -1966,28 +1978,34 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		}
 	}
 
-
-	//recordAllVehicleODInfo(vehicle);
-
+	if (isTrainingQLearning)
+	{
+		recordAllVehicleODInfo(vehicle);
+	}
 
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if ((!haveOutPutFunctionsRan) && currTime > 14399)
 	{
-		//outPutOptVehData();
-
-		//outPutOptVehPerformance();
-
-	   //outPutOptVehTrajectoryDataSet();
-
-		//outPutOptVehLaneChangingDetials();
-
-		//outPutAllVehicleODInfo();
-
-		//outPutControlGroupVehiclesODInfo();
 		
-		outPutQTableAndTotalReward();
+		if (isTrainingQLearning)
+		{
+			outPutQTableAndTotalReward();
+		}
+		else 
+		{
+			outPutOptVehData(); // consider multi-traverse as one vehicle
 
+			outPutOptVehPerformance(); // for AFT
+
+			outPutOptVehTrajectoryDataSet();
+
+			outPutOptVehLaneChangingDetials();
+
+			//outPutAllVehicleODInfo();
+
+			outPutControlGroupVehiclesODInfo();
+		}
 
 		haveOutPutFunctionsRan = true;
 	}
@@ -2533,23 +2551,15 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 	else if ((vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle()) && useQLearning)
 	{
-		unsigned int stateID = getStateID_QLearning(vehicle);
-		A2SimVehicle *pVehCurUp = NULL;
-		A2SimVehicle *pVehCurDw = NULL;
-		double shiftCurUp = 0, shiftCurDw = 0;
-		//get current lane follower and leader
-		vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
-		double current_acceleration = get_IDM_acceleration(vehicle, pVehCurDw);
-
-
-		updateQTable(q_Learning.stateID_last[vehID], q_Learning.action_last[vehID], stateID, q_Learning.previous_acceleration[vehID],current_acceleration);
-
-		int action = getQLearningDecisionAction(vehicle);
-		direction = convertQActionToDirection(action);
-
+		if (isTrainingQLearning)
+		{
+			updateQTable(vehicle);
+		}
+	
+		direction = convertQActionToDirection(getQLearningDecisionAction(vehicle));
 
 		/************ TEST OUTPUT ************/
-		if (needTestMsg&&direction!=0)
+		if (needTestMsg&&direction != 0)
 		{
 
 			string laneChangeTestName = "TEST_LCacceleration.txt";
@@ -2564,6 +2574,8 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 				hasOutPutFilesInitiated = true;
 			}
 
+
+			unsigned int stateID = getStateID_QLearning(vehicle);
 			int stateCode[10] = { 0 };
 			for (int i = 0; i <= 8; ++i)
 			{
@@ -2580,7 +2592,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 			laneChangeTest
 				<< "TIME" << currTime << "\n"
-				<< "StateID"<<stateID<<"\n"
+				<< "StateID" << stateID << "\n"
 				<< "currentDirectionQuality = " << currentDirectionQuality << "\n"
 				<< "leftDirectionqQuality = " << leftDirectionqQuality << "\n"
 				<< "rightDirectionqQuality = " << rightDirectionqQuality << "\n"
@@ -2599,11 +2611,6 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 
 		vehicle->applyLaneChanging(direction, threadId);
-
-
-		q_Learning.previous_acceleration[vehID] = current_acceleration;
-		q_Learning.action_last[vehID] = action;
-		q_Learning.stateID_last[vehID] = stateID;
 
 
 		return true;

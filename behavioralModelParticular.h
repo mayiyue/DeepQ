@@ -77,6 +77,8 @@ public:
 
 	int getAvailableActionRandomly_Qlearning(unsigned int stateID, A2SimVehicle * vehicle);
 
+	void updateQTable(A2SimVehicle * vehicle);
+
 	
 	void getLeadersAccelerationsDistributionDifference(A2SimVehicle * currentVehicle, double & diff_left_mean, double & diff_left_sd, double & diff_right_mean, double & diff_right_sd);
 
