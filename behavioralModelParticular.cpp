@@ -5,7 +5,7 @@
 2018-9-27 9:58:44已完成 VVVV 3. 使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28
 4. 写一个debug类或者一些debug函数，用于调试，摆脱传统的注释、运行部分 2018-9-20 13:55:25
 5. 2018-11-7 12:16:30 OPTvehicle数据结构中 pathlength有耦合
-6. 2019-3-7 15:09:18 把那些模块做成类，避免耦合
+6. 2019-3-7 15:09:18 把那些模块做成类，尽量避免耦合。行为类，数据类,数据开关类，测试类
 */
 
 #include "behavioralModelParticular.h"
@@ -113,7 +113,7 @@ struct {
 	double totalTravelTime;
 	double totalTravelPathLength;
 	int preSectionID;
-
+	int laneChangingTimes;
 	bool isSmartVehicle; // TEST for SV demand
 }allVehicleODInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
 
@@ -126,8 +126,6 @@ struct TrajectoryData {
 	double acceleration;
 };
 struct VehiclePathInfo {
-
-
 	struct LaneChangeDetail {
 		double occurrenceTime; // occurrence time of lanechanging
 		int occurrenceSection;
@@ -195,7 +193,7 @@ map<int, double> parameterSet = {
 list <int> impactedVehIDSet;
 
 
-// sectionSequence[sequence]=sectionID
+// return sectionID, sectionSequence[sequence]=sectionID
 int const sequenceSectionID[23] = { 0,363,364,370,387,1022,952,949,386,395,935,404,974,982,967,406,414,423,986,990,994,998,1002 };
 
 
@@ -837,6 +835,8 @@ void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 
 	}
 
+
+
 }
 
 
@@ -1463,6 +1463,65 @@ void outPutOptVehData()
 
 }
 
+void outPutStatisticsData()
+{
+	string outPutDataFullPath;
+	string outPutDataFileName = "SectionStatisticsData.dat";
+	outPutDataFullPath = DATAPATH + outPutDataFileName;
+	ofstream outPutData;
+	outPutData.open(outPutDataFullPath, ios::app);
+
+	for (int sequence = 1; sequence <= 22; ++sequence)
+	{
+		int sectionID = sequenceSectionID[sequence];
+		if (sequence == 1)
+		{
+			outPutData
+				<< "SectionID" << "\t"
+				<< "LaneChangesPerKM" << "\t"
+				<< "TotalLaneChangesNumber" << "\n";
+		}
+		else
+		{
+			StructAkiEstadSection sectionData = AKIEstGetGlobalStatisticsSection(sectionID, 0);
+			outPutData
+				<< sectionID << "\t"
+				<< sectionData.laneChanges << "\t"
+				<< sectionData.totalLaneChanges << "\t";
+		}
+
+
+		if (sequence == 22) // max section number
+		{
+			outPutData << endl;
+		}
+	}
+
+	outPutData.close();
+
+
+
+// for system data
+	string outPutDataFullPath_sys;
+	string outPutDataFileName_sys = "SystemStatisticsData.dat";
+	outPutDataFullPath_sys = DATAPATH + outPutDataFileName_sys;
+	ofstream outPutData_sys;
+	outPutData_sys.open(outPutDataFullPath_sys, ios::app);
+	
+	
+	StructAkiEstadSystem systemData = AKIEstGetGlobalStatisticsSystem(0);
+	
+	outPutData_sys
+		<< "LaneChangesPerKM" << "\t"
+		<< "TotalLaneChangesNumber" << "\n"
+		<< systemData.laneChanges << "\t"
+		<< systemData.totalLaneChanges << endl;
+
+	outPutData_sys.close();
+
+
+
+}
 
 //TEST, for investigating the relation between lane changing times and politeness factor p 
 /*
@@ -2001,6 +2060,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		if (isTrainingQLearning)
 		{
 			outPutQTableAndTotalReward();
+			outPutStatisticsData();
 		}
 		else 
 		{
