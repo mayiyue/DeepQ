@@ -38,7 +38,7 @@ bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
-bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
+bool const useIterationOptimization = true; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
 bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
 
@@ -59,13 +59,13 @@ double const upLimitOfACCTimeGap = 0.7;
 
 
 // for Optimizing Working
-double  penetrationOfSmartVehicles = 0.3; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = 4000;//4000 4121 5070 // work only when   useIterationOptimization = false
+int optimiazedVehID = 0;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
 
@@ -442,13 +442,13 @@ int behavioralModelParticular::getDiscretedState_Qlearning(double diff_value)
 		state = 0;
 	else if (diff_value > -1 && diff_value <= -0.5)
 		state = 1;
-	else if (diff_value > -0.5 && diff_value <0)
+	else if (diff_value > -0.5 && diff_value < 0)
 		state = 2;
-	else if (diff_value==0)
+	else if (diff_value == 0)
 		state = 3;
-	else if (diff_value > 0 && diff_value <=0.5)
+	else if (diff_value > 0 && diff_value <= 0.5)
 		state = 4;
-	else if (diff_value > 0.5 && diff_value <=1)
+	else if (diff_value > 0.5 && diff_value <= 1)
 		state = 5;
 	else if (diff_value > 1)
 		state = 6;
@@ -979,16 +979,24 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 		{
 			leaders_current[1] = NULL;
 		}
+	}
+
+	if (leaders_right[1] != NULL)
+	{
 		if (currentVehicle->getPositionReferenceVeh(0, leaders_right[1], 0) > 250)
 		{
 			leaders_right[1] = NULL;
 		}
+	}
+
+	if (leaders_left[1] != NULL)
+	{
 		if (currentVehicle->getPositionReferenceVeh(0, leaders_left[1], 0) > 250)
 		{
 			leaders_left[1] = NULL;
 		}
 	}
-
+	
 
 
 
