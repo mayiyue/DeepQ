@@ -33,7 +33,7 @@ using namespace std;
 
 // controllers on-off
 bool const needTestMsg = false;
-bool const isTrainingQLearning = false;
+bool const isTrainingQLearning = true;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
@@ -59,7 +59,7 @@ double const upLimitOfACCTimeGap = 0.7;
 
 
 // for Optimizing Working
-double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+double  penetrationOfSmartVehicles = 0.3; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
@@ -83,8 +83,9 @@ struct
 	// a4	口	口	  Right
 	// [deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_μL][deta_sigmaL][deta_μR][deta_sigmaR][Actions] 10 Dimensions
 	// [3] Actions:0 current 1 left 2 right
-	float q_table[6][6][6][6][6][6][6][6][6][3];
-
+	/*float q_table[6][6][6][6][6][6][6][6][6][3];
+*/
+	float q_table[7][7][7][7][7][7][7][7][7][3];
 	unsigned int stateID_last[16000]; // stateID_last[vehicle ID]
 	unsigned int action_last[16000]; // action_last[vehicle ID] 
 	
@@ -125,17 +126,20 @@ struct TrajectoryData {
 	double speed;
 	double acceleration;
 };
+struct LaneChangeDetail {
+	double occurrenceTime; // occurrence time of lanechanging
+	int occurrenceSection;
+	double occurrencePositionInSection; // unit:m, position refers to current section
+	double occurrencePositionInFreeway; // unit:m, position 0 - 9.7 km (around)
+	double occurrenceCoordinationX;
+	double occurrenceCoordinationY;
+	int occurenceVehID;
+	int preLane; // using absolute network lane ID
+	int folLane; // using absolute network lane ID
+};
+
 struct VehiclePathInfo {
-	struct LaneChangeDetail {
-		double occurrenceTime; // occurrence time of lanechanging
-		int occurrenceSection;
-		double occurrencePositionInSection; // position refers to current section
-		double occurrenceCoordinationX;
-		double occurrenceCoordinationY;
-		int occurenceVehID;
-		int preLane; // using absolute network lane ID
-		int folLane; // using absolute network lane ID
-	}laneChangeDetailSet[10000]; // the maximum times of lanechanging for one vehicle ID
+	LaneChangeDetail laneChangeDetailSet[10000]; // the maximum times of lanechanging for one vehicle ID
 
 	struct SectionPath {
 		double entrySectionTime;
@@ -154,7 +158,7 @@ struct VehiclePathInfo {
 	list <TrajectoryData> trajectoryDataSet;
 	//	double	acceleration[36000]; // 4 hours = 14400 sec = 36000 steps
 
-	//temp variation for judging whether vehicle states is changed
+	//temp variation for judging whether vehicle states is changed or not
 	int	preSectionID;
 	int currSectionID;
 	int preLane; // using absolute network lane ID
@@ -396,7 +400,6 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 	state_diff_mean_left = getDiscretedState_Qlearning(diff_mean_left);
 	state_diff_mean_right = getDiscretedState_Qlearning(diff_mean_right);
 
-
 	state_diff_sd_left = getDiscretedState_Qlearning(diff_sd_left);
 	state_diff_sd_right = getDiscretedState_Qlearning(diff_sd_right);
 
@@ -421,18 +424,34 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 int behavioralModelParticular::getDiscretedState_Qlearning(double diff_value)
 {
 	int state = 0;
+
+	//if (diff_value <= -1)
+	//	state = 0;
+	//else if (diff_value > -1 && diff_value <= -0.5)
+	//	state = 1;
+	//else if (diff_value > -0.5 && diff_value <= 0)
+	//	state = 2;
+	//else if (diff_value > 0 && diff_value <= 0.5)
+	//	state = 3;
+	//else if (diff_value > 0.5 && diff_value <= 1)
+	//	state = 4;
+	//else if (diff_value > 1)
+	//	state = 5;
+
 	if (diff_value <= -1)
 		state = 0;
 	else if (diff_value > -1 && diff_value <= -0.5)
 		state = 1;
-	else if (diff_value > -0.5 && diff_value <= 0)
+	else if (diff_value > -0.5 && diff_value <0)
 		state = 2;
-	else if (diff_value > 0 && diff_value <= 0.5)
+	else if (diff_value==0)
 		state = 3;
-	else if (diff_value > 0.5 && diff_value <= 1)
+	else if (diff_value > 0 && diff_value <=0.5)
 		state = 4;
-	else if (diff_value > 1)
+	else if (diff_value > 0.5 && diff_value <=1)
 		state = 5;
+	else if (diff_value > 1)
+		state = 6;
 
 	return state;
 }
@@ -605,7 +624,7 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(unsigned int
 float getRewardQLearning(double previous_acceleration, double current_acceleartion)
 {
 	float reward = 0;
-	reward = current_acceleartion - previous_acceleration;
+	reward = (float)(current_acceleartion - previous_acceleration);
 	return reward;
 }
 float maxQActionValueForState(unsigned int stateID)
@@ -780,8 +799,8 @@ bool isControlGroupVehicle(int referenceVehicleID, int testVehicleID)
 		&& allVehicleODInfoDataSet[testVehicleID].entryTime < allVehicleODInfoDataSet[referenceVehicleID].entryTime + 30
 		// 2. OD comparison
 		&& allVehicleODInfoDataSet[testVehicleID].entrySection == allVehicleODInfoDataSet[referenceVehicleID].entrySection
-		&&allVehicleODInfoDataSet[testVehicleID].entryLane == allVehicleODInfoDataSet[referenceVehicleID].entryLane
-		&&allVehicleODInfoDataSet[testVehicleID].exitSection == allVehicleODInfoDataSet[referenceVehicleID].exitSection
+		&& allVehicleODInfoDataSet[testVehicleID].entryLane == allVehicleODInfoDataSet[referenceVehicleID].entryLane
+		&& allVehicleODInfoDataSet[testVehicleID].exitSection == allVehicleODInfoDataSet[referenceVehicleID].exitSection
 		)
 	{
 		return true;
@@ -948,9 +967,27 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 	//get the first leader in right lane
 	currentVehicle->getUpDown(1, currentVehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
 
+
 	leaders_current[1] = pVehCurDw;
 	leaders_right[1] = pVehRightDw;
 	leaders_left[1] = pVehLeftDw;
+
+	// if leaders are too far, ignore them
+	if (leaders_current[1] != NULL)
+	{
+		if (currentVehicle->getPositionReferenceVeh(0, leaders_current[1], 0) > 250)
+		{
+			leaders_current[1] = NULL;
+		}
+		if (currentVehicle->getPositionReferenceVeh(0, leaders_right[1], 0) > 250)
+		{
+			leaders_right[1] = NULL;
+		}
+		if (currentVehicle->getPositionReferenceVeh(0, leaders_left[1], 0) > 250)
+		{
+			leaders_left[1] = NULL;
+		}
+	}
 
 
 
@@ -1487,7 +1524,7 @@ void outPutStatisticsData()
 			outPutData
 				<< sectionID << "\t"
 				<< sectionData.laneChanges << "\t"
-				<< sectionData.totalLaneChanges << "\t";
+				<< sectionData.totalLaneChanges << "\n";
 		}
 
 
@@ -2071,6 +2108,8 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 			outPutOptVehTrajectoryDataSet();
 
 			outPutOptVehLaneChangingDetials();
+
+			outPutStatisticsData();
 
 			//outPutAllVehicleODInfo();
 
