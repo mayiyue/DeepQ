@@ -33,12 +33,12 @@ using namespace std;
 
 // controllers on-off
 bool const needTestMsg = false;
-bool const isTrainingQLearning = true;
+bool const isTrainingQLearning = false;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
-bool const useIterationOptimization = true; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
+bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
 bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
 
@@ -59,13 +59,13 @@ double const upLimitOfACCTimeGap = 0.7;
 
 
 // for Optimizing Working
-double  penetrationOfSmartVehicles = 0; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+double  penetrationOfSmartVehicles =0; // if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 1;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
-int optimiazedVehID = 0;//4000 4121 5070 // work only when   useIterationOptimization = false
+int optimiazedVehID = 5070;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
 
@@ -1309,7 +1309,7 @@ void outPutControlGroupVehiclesODInfo()
 		<< "exitTime" << "\t"
 		<< "totalTravelPathLength" << "\t"
 		<< "totalTravelTime" << "\t"
-		<< "Average Travel Time" << endl;
+		<< "AverageTravelTime" << endl;
 
 
 	for (auto vehID = 1; vehID < 16000; ++vehID)
