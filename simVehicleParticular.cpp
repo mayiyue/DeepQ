@@ -37,3 +37,5 @@ void simVehicleParticular::setIsSmartVehicle(bool setValue)
 {
 	isSmartVehicle = setValue;
 }
+
+
