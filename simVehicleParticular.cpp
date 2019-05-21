@@ -4,6 +4,7 @@ simVehicleParticular:: simVehicleParticular ( void *handlerVehicle, unsigned sho
 {
 	isSmartVehicle = false;
 	isACC = false;
+
 	
 }
 simVehicleParticular::~simVehicleParticular ()
@@ -39,3 +40,24 @@ void simVehicleParticular::setIsSmartVehicle(bool setValue)
 }
 
 
+
+
+const int simVehicleParticular::getPlatoonPosition() const
+{
+	return platoonPosition;
+}
+void simVehicleParticular::setPlatoonPosition(int setValue)
+{
+	platoonPosition = setValue;
+}
+
+
+
+const double simVehicleParticular::getPreT_CACC() const
+{
+	return preT_CACC;
+}
+void simVehicleParticular::setPreT_CACC(double setValue)
+{
+	preT_CACC = setValue;
+}

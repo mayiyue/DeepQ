@@ -49,6 +49,12 @@ public:
 
 	int MOBILDirection(A2SimVehicle * vehicle, double p = 0.5, double a_threshold = 1, double bsafe = -5);
 
+	double getEquippedCarTimeGap(simVehicleParticular * vehicle, simVehicleParticular * leader);
+
+	double getEquippedCarDesiredGap(simVehicleParticular * pVehCur, simVehicleParticular * leader, double speed_current, double speed_leader, double gap_to_leader);
+
+	double getEquippedCarAcceleration(simVehicleParticular * vehicle, simVehicleParticular * leader);
+
 	double getGippsAccelerationSpeed(simVehicleParticular *vehicle,double VelActual,double VelDeseada, double RestoCiclo);
 	double getGippsDecelerationSpeed(simVehicleParticular *vehicle,double Shift,simVehicleParticular *leader,double ShiftLeader,bool controlDecelMax,bool aside,int time);
 	double getGippsMinimumGap(simVehicleParticular* pVehUp,simVehicleParticular* pVehDw,double Xup,double Vup,double Xdw,double Vdw,double Gap,bool ImprudentCase,bool VehicleIspVehDw);

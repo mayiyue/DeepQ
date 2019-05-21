@@ -28,9 +28,18 @@ public:
 	void setIsSmartVehicle(bool setValue);
 
 
+	void setPlatoonPosition(int setValue);
+	void setPreT_CACC(double setValue);
 
-	//const bool GetIsACC() const;
-	//void SetIsACC(bool isACC);
+	int const platoonMaxSize = 5;
+	int platoonPosition;
+	const int getPlatoonPosition()const;
+
+	const double getPreT_CACC()const;
+	double preT_CACC;
+
+
+
 
 };
 

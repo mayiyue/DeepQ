@@ -33,7 +33,7 @@ using namespace std;
 
 // controllers on-off
 bool const needTestMsg = false;
-bool const isTrainingQLearning = true;
+bool const isTrainingQLearning = false;
 bool const isTestSingleVehicle = false;
 bool const isForbidSVExitFromOffRamp = false;
 bool const useIDM = true;
@@ -41,7 +41,7 @@ bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
-bool const useQLearning = true;
+bool const useQLearning = false;
 bool const useFarSightInfo = false;
 bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
 bool const useOutSideInPut_OptimizingVehicleID = false;
@@ -56,18 +56,29 @@ bool hasOutPutFilesInitiated = false;
 bool hasReadOptimizingVehicleID = false;
 
 // for IDM, (C)ACC
-double const penetrationOfACC = 0;
+double const penetrationOfACC = 1;
 double const lowLimitOfACCTimeGap = 0.5;
-double const upLimitOfACCTimeGap = 0.7; 
+double const upLimitOfACCTimeGap = 0.7;
+
+
+
+//for CACC longitudinal model
+double const t_plat = 0.5; // sec
+double const t_ACC = 1.0; // sec
+double const platoonMaxSize = 5; // a platoon consists no more than 5 equipped cars.
+double const t_relaxationtime = 25; // sec
+double const k = 0.5;
+
+
 
 
 // for q learning 
-double const laneChangingThresholdForQL = 0; 
+double const laneChangingThresholdForQL = 0;
 int const numberOfEnvState = 6;
 double const farSightInfoLimit = 250; // m
 
 // for Optimizing Working
-double  penetrationOfSmartVehicles = 0.5;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+double  penetrationOfSmartVehicles = 0;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
@@ -259,7 +270,7 @@ int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 
 	int action = 0;
 	unsigned int stateID = getStateID_QLearning(vehicle);
-	if (isTrainingQLearning) 
+	if (isTrainingQLearning)
 	{
 		if (AKIGetRandomNumber() < q_Learning.epsilon)
 		{
@@ -439,7 +450,7 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 			+ state_diff_an_left  *(int)pow(10, 6)
 			+ state_diff_ao * (int)pow(10, 5)
 			+ state_diff_an_right* (int)pow(10, 4)
-			+state_diff_mean_left *(int)pow(10, 3)
+			+ state_diff_mean_left *(int)pow(10, 3)
 			+ state_diff_sd_left *(int)pow(10, 2)
 			+ state_diff_mean_right *(int)pow(10, 1)
 			+ state_diff_sd_right * (int)pow(10, 0);
@@ -458,7 +469,7 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 			+ 0 * (int)pow(10, 1)
 			+ 0 * (int)pow(10, 0);
 	}
-	
+
 	return stateID;
 }
 
@@ -544,7 +555,7 @@ int behavioralModelParticular::getMaxQValueAction(unsigned int stateID, A2SimVeh
 	float leftDirectionqQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][1];
 	float rightDirectionqQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
 
-	
+
 
 	if ((curlane < maxlane)// left is possible
 		&& (leftDirectionqQuality > currentDirectionQuality && leftDirectionqQuality >= rightDirectionqQuality)
@@ -703,7 +714,7 @@ void behavioralModelParticular::updateQTable(A2SimVehicle *vehicle)
 
 	int previous_action = 0;
 	int previous_AbsLane = getNetWorkAbsoluteLaneID(q_Learning.sectionID_previous[vehID], q_Learning.lane_previous[vehID]);
-	int current_AbsLane= getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
+	int current_AbsLane = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
 	if (current_AbsLane - previous_AbsLane == 0)
 	{
 		previous_action = 0; // had not changed lane
@@ -930,7 +941,7 @@ void behavioralModelParticular::recordControlGroupTrajectory(int referenceVehicl
 	int testVehicleID = testVehicle->getId();
 	double currTime = AKIGetCurrentSimulationTime(); // seconds
 	int currentSectionID = testVehicle->getIdCurrentSection();
-	
+
 	if (// 1. time window comparison
 		allVehicleODInfoDataSet[testVehicleID].entryTime > allVehicleODInfoDataSet[referenceVehicleID].entryTime - 30
 		&& allVehicleODInfoDataSet[testVehicleID].entryTime < allVehicleODInfoDataSet[referenceVehicleID].entryTime + 30
@@ -940,11 +951,11 @@ void behavioralModelParticular::recordControlGroupTrajectory(int referenceVehicl
 		//&& allVehicleODInfoDataSet[testVehicleID].exitSection == allVehicleODInfoDataSet[referenceVehicleID].exitSection
 		)
 	{
-	
+
 		// find the control group vehicle node, if it exists, use its data, if not, use empty node
 		VehiclePathInfo controlGroupVehicleDataSetNode = {};
 		bool isControlGroupVehicleNodeExist = false;
-		
+
 		for (auto iter : controlGroupVehicleDataSet)
 		{
 			if (iter.vehicleID == testVehicleID)
@@ -954,7 +965,7 @@ void behavioralModelParticular::recordControlGroupTrajectory(int referenceVehicl
 				break;
 			}
 		}
-	
+
 		// now the reference is based on the data copy of this node, or empty node
 		controlGroupVehicleDataSetNode.vehicleID = testVehicleID;
 		// record path length each time step
@@ -1002,7 +1013,7 @@ void behavioralModelParticular::recordControlGroupTrajectory(int referenceVehicl
 			controlGroupVehicleDataSet.push_back(controlGroupVehicleDataSetNode);
 		}
 	}
-	
+
 
 
 }
@@ -1060,7 +1071,7 @@ void behavioralModelParticular::recordOptVehiclLaneChangingInfo(A2SimVehicle *ve
 		laneChangingDetailNode.preLane = optVehDataSet.preLane;
 		laneChangingDetailNode.folLane = currAbsoluteLaneID;
 
-		optVehDataSet.laneChangeDetailSet.push_back(laneChangingDetailNode); 
+		optVehDataSet.laneChangeDetailSet.push_back(laneChangingDetailNode);
 	}
 	optVehDataSet.preLane = currAbsoluteLaneID;
 }
@@ -1148,7 +1159,7 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 			leaders_left[1] = NULL;
 		}
 	}
-	
+
 
 
 
@@ -1431,7 +1442,7 @@ void behavioralModelParticular::outPutQTableAndTotalReward()
 		}
 	}
 
-	
+
 	time_t now = time(0);
 	char* dt = ctime(&now);
 
@@ -1576,7 +1587,7 @@ void behavioralModelParticular::outPutOptVehLaneChangingDetials()
 		<< "PreviousLane" << "\t"
 		<< "FollowingLane"
 		<< endl;
-	
+
 	for (auto iter : optVehDataSet.laneChangeDetailSet)
 	{
 		outPutLaneChanging
@@ -1715,16 +1726,16 @@ void behavioralModelParticular::outPutStatisticsData()
 
 
 
-// for system data
+	// for system data
 	string outPutDataFullPath_sys;
 	string outPutDataFileName_sys = "SystemStatisticsData.dat";
 	outPutDataFullPath_sys = DATAPATH + outPutDataFileName_sys;
 	ofstream outPutData_sys;
 	outPutData_sys.open(outPutDataFullPath_sys, ios::app);
-	
-	
+
+
 	StructAkiEstadSystem systemData = AKIEstGetGlobalStatisticsSystem(0);
-	
+
 	outPutData_sys
 		<< "LaneChangesPerKM" << "\t"
 		<< "TotalLaneChangesNumber" << "\n"
@@ -2095,6 +2106,7 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 		{
 			newVehicle->setIsACC(true);
 			newVehicle->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
+			newVehicle->setPreT_CACC(newVehicle->getACCTimeGap());
 		}
 
 
@@ -2198,7 +2210,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	//bool isACC = vehicleTemp->getIsACC();
 	//bool isOptimizedVehicle = false; //vehicleTemp->getIsOptimizedVehicle();
 
-	
+
 
 	if (useIterationOptimization && haveOptimizedVeh.isExist == false && (getEntrySectionSequence(currSectionID) != -1))
 	{
@@ -2221,7 +2233,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	{
 
 		//inputParameterSetFromAFT();// input parameters to  <map>parameterSet, it will be ran only once
-		if (useQLearning) 
+		if (useQLearning)
 		{
 			inputQTable();
 		}
@@ -2230,7 +2242,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		{
 
 		}
-		else if(isTestSingleVehicle)
+		else if (isTestSingleVehicle)
 		{
 			recordOptVehicleTravelTime(currTime);
 			recordOptVehiclePathLength(vehicle);
@@ -2238,7 +2250,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 			recordOptVehiclTrajectory(vehicle, currTime, currSectionID);
 
 		}
-	
+
 		/******TEST for locating special position*********/
 		/*if (needTestMsg &&
 			(currSectionID == 949
@@ -2275,18 +2287,18 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		}
 	}
 
-	
+
 
 	// OUTPUT data at the end time of simulation, (sec) 4 hours equals 14400 seconds
 	if ((!haveOutPutFunctionsRan) && currTime > 14399)
 	{
-		
+
 		if (isTrainingQLearning)
 		{
 			outPutQTableAndTotalReward();
 			outPutStatisticsData();
 		}
-		else if(isTestSingleVehicle)
+		else if (isTestSingleVehicle)
 		{
 			outPutOptVehData(); // consider multi-traverse as one vehicle
 
@@ -2859,7 +2871,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		{
 			updateQTable(vehicle);
 		}
-	
+
 		direction = convertQActionToDirection(getQLearningDecisionAction(vehicle));
 
 		/************ TEST OUTPUT ************/
@@ -2928,6 +2940,10 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 
 		return true;
+	}
+	else if (vehicle_particular_Temp->getPlatoonPosition() != 0)
+	{
+		vehicle->applyLaneChanging(0, threadId);
 	}
 	else
 	{
@@ -3145,7 +3161,16 @@ double behavioralModelParticular::getIDMAccelerationSpeed(simVehicleParticular *
 {
 	double X = VelActual / VelDeseada;
 	double a = vehicle->getAcceleration();
-	double acceleration = max(vehicle->getDeceleration(), vehicle->getAcceleration()*(1. - pow(X, 4)));
+	double acceleration = 0;
+	if (vehicle->getIsACC())
+	{
+		acceleration = getEquippedCarAcceleration(vehicle, NULL);
+	}
+	else
+	{
+		acceleration = max(vehicle->getDeceleration(), vehicle->getAcceleration()*(1. - pow(X, 4)));
+	}
+
 	double speed = max(0., VelActual + acceleration * vehicle->getReactionTime());
 	return speed;
 }
@@ -3275,7 +3300,15 @@ double behavioralModelParticular::getIDMDecelerationSpeed(simVehicleParticular *
 		double bkin = (VelAnterior*VelAnterior) / (2 * GapAnterior);
 		double acceleration;
 
-		acceleration = max(b, a*(1 - pow(X, 4) - (DesiredGap / GapAnterior)*(DesiredGap / GapAnterior)));
+		if (vehicle->getIsACC() && (!leader->isFictitious()))
+		{
+			acceleration = getEquippedCarAcceleration(vehicle, leader);
+		}
+		else
+		{
+			acceleration = max(b, a*(1 - pow(X, 4) - (DesiredGap / GapAnterior)*(DesiredGap / GapAnterior)));
+		}
+
 
 		double speed = max(0., VelAnterior + acceleration * vehicle->getReactionTime());
 		return speed;
@@ -3362,7 +3395,7 @@ double behavioralModelParticular::get_IDM_acceleration(A2SimVehicle*vehicle_p, A
 	if (vehicle_p == NULL) return 0;
 	double acceleration = 0;
 	double shift_temp = 0;
-	double  shiftLeader = 0;
+	double shiftLeader = 0;
 
 	double a = vehicle->getAcceleration();
 	double b = vehicle->getDeceleration();
@@ -3435,12 +3468,12 @@ double behavioralModelParticular::getIDMDesiredGap(simVehicleParticular* pVehCur
 
 	double timeGap = pVehCur->getMinimumHeadway();
 
-	if (pVehCur->getIsACC())
+	/*if (pVehCur->getIsACC())
 	{
 		timeGap = pVehCur->getACCTimeGap();
 	}
-
-	// With regard to Optimized Lane Changing Strategy, longitudinal driving characteristics should be identical.
+*/
+// With regard to Optimized Lane Changing Strategy, longitudinal driving characteristics should be identical.
 
 
 	double a = pVehCur->getAcceleration();
@@ -3922,3 +3955,102 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 
 	return direction;
 }
+
+
+
+
+//T_CACC formulation
+double behavioralModelParticular::getEquippedCarTimeGap(simVehicleParticular*vehicle, simVehicleParticular*leader)
+{
+
+
+	bool leaderIsACC = leader->getIsACC();
+
+	double t_tar;
+
+	if (leader->getIsACC() && leader->getPlatoonPosition() < platoonMaxSize)
+	{
+		t_tar = t_plat;
+	}
+	else
+	{
+		t_tar = vehicle->getACCTimeGap();
+	}
+
+	
+	double t_CACC_pre = vehicle->getPreT_CACC();
+
+	double t = t_CACC_pre + (t_tar - t_CACC_pre) / t_relaxationtime;
+
+	/*double T_cur = (s - (vehicle->getMinimumDistanceInterVeh())) / (vehicle->getSpeed(vehicle->isUpdated()));*/
+	double t_cur = vehicle->getACCTimeGap();
+	double t_CACC = min(t, max(t_cur, t_plat));
+
+	vehicle->setPreT_CACC(t_CACC);
+
+	return t_CACC;
+}
+
+
+
+//equipped car acceleration formulation
+double behavioralModelParticular::getEquippedCarAcceleration(simVehicleParticular*vehicle, simVehicleParticular*leader)
+{
+
+	if (leader == NULL)
+	{
+		vehicle->setPlatoonPosition(1);
+		return vehicle->getAcceleration();
+	}
+	else
+	{
+		int leaderPlatoonPos = leader->getPlatoonPosition();
+
+		bool isLeaderACC = leader->getIsACC();
+		double shift_leader_temp = 0;
+		double acceleration_leader = get_IDM_acceleration(leader, (simVehicleParticular*)leader->getRealLeader(shift_leader_temp));
+		double a_CACC = vehicle->getAcceleration();
+
+		double currentSpeed, pos_cur, speed_leader, pos_leader;
+		double shift_temp = 0;
+		double shiftLeader = 0;
+		double s = max(0,vehicle->getGap(shift_temp, leader, shiftLeader, pos_cur, currentSpeed, pos_leader, speed_leader)); // sometime it will return a value less than 0, I guess it's a bug of AIMSUN
+
+
+		double timeGap = getEquippedCarTimeGap(vehicle, leader);
+
+		double a = vehicle->getAcceleration();
+		double b = -vehicle->getDeceleration();
+	
+		double s_CACC = vehicle->getMinimumDistanceInterVeh() + currentSpeed*timeGap + currentSpeed*(currentSpeed - speed_leader) / (2 * sqrt(a*b)); // replace with 2 * sqrt
+
+
+
+		double a_intACC = 1 - (s_CACC / s) * (s_CACC / s);
+		double a_int = 0;
+
+		if ((leaderPlatoonPos < platoonMaxSize) && (leader->getIsACC())&& s<500)
+		{
+			a_int = a_intACC*(1 - k) + k*acceleration_leader / a_CACC;
+			vehicle->setPlatoonPosition(leaderPlatoonPos + 1);
+		}
+		else
+		{
+			a_int = a_intACC;
+		}
+
+		double X = vehicle->getSpeed(vehicle->isUpdated()) / vehicle->getFreeFlowSpeed();
+		double acceleration = a_CACC * min(a_int, (1 - pow(X, 4)));
+
+		if (vehicle->getId() ==1935&&acceleration<0.01)
+		{
+			int test = 1;
+		}
+
+
+
+		return acceleration;
+	}
+
+}
+
