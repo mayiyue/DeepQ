@@ -33,16 +33,18 @@ using namespace std;
 
 // controllers on-off
 bool const needTestMsg = false;
-bool const isTrainingQLearning = false;
-bool const isTestSingleVehicle = true;
+bool const isTrainingQLearning = true;
+bool const isTestSingleVehicle = false;
+bool const isForbidSVExitFromOffRamp = false;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
+bool const useFarSightInfo = false;
 bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
-
+bool const useOutSideInPut_OptimizingVehicleID = false;
 
 // triggers
 bool hasRanInThisTimeSetp = false; // for some codes that need be run only one time in one simulation step
@@ -51,25 +53,25 @@ bool hasInputQTable = false;
 bool haveOutPutFunctionsRan = false;
 bool haveInPutFunctionsRan = false;
 bool hasOutPutFilesInitiated = false;
-
+bool hasReadOptimizingVehicleID = false;
 
 // for IDM, (C)ACC
 double const penetrationOfACC = 0;
 double const lowLimitOfACCTimeGap = 0.5;
-double const upLimitOfACCTimeGap = 0.7;
+double const upLimitOfACCTimeGap = 0.7; 
 
 
 // for q learning 
-double const laneChangingThresholdForQL = 7;
+double const laneChangingThresholdForQL = 0; 
 int const numberOfEnvState = 6;
-
+double const farSightInfoLimit = 250; // m
 
 // for Optimizing Working
-double  penetrationOfSmartVehicles = 0;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+double  penetrationOfSmartVehicles = 0.5;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
-int optimizedExperienceTimes = 1;
+int optimizedExperienceTimes = 0;
 int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
 int optimiazedVehID = 4000;//4000 4121 5070 // work only when   useIterationOptimization = false
 
@@ -89,13 +91,13 @@ struct
 	// a4	口	口	  Right
 	// [deta_a1L][deta_a1R][deta_a2L][deta_a3][deta_a4R][deta_μL][deta_sigmaL][deta_μR][deta_sigmaR][Actions] 10 Dimensions
 	// [3] Actions:0 current 1 left 2 right
-	/*float q_table[6][6][6][6][6][6][6][6][6][3];
-*/
+
 	float q_table[numberOfEnvState][numberOfEnvState][numberOfEnvState][numberOfEnvState][numberOfEnvState][numberOfEnvState][numberOfEnvState][numberOfEnvState][numberOfEnvState][3];
-	unsigned int stateID_last[16000]; // stateID_last[vehicle ID]
-	unsigned int action_last[16000]; // action_last[vehicle ID] 
-	
-	double previous_acceleration[16000]; // for computing reward, [vehicle ID] 
+	unsigned int stateID_previous[16000]; // stateID_last[vehicle ID]
+
+	unsigned int lane_previous[16000]; // lane_last[vehicle ID] 
+	unsigned int sectionID_previous[16000];  // sectionID_last[vehicle ID] 
+	double acceleration_previous[16000]; // for computing reward, [vehicle ID] 
 
 	double total_reward;
 
@@ -233,7 +235,7 @@ void readSmartVehicleDemand()
 */
 
 /*Method, Smart Demand (penetration rate) from a outside file*/
-void readSmartVehiclePenetrationRate()
+void behavioralModelParticular::readSmartVehiclePenetrationRate()
 {
 	ifstream readSmartVehicleDemandFile;
 	readSmartVehicleDemandFile.open("D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\InputData\\SmartVehiclePenetrationRate.dat", ios::in);
@@ -243,6 +245,15 @@ void readSmartVehiclePenetrationRate()
 
 }
 
+void behavioralModelParticular::readOptimizingVehicleID()
+{
+	ifstream readOptimizingVehicleIDFile;
+	readOptimizingVehicleIDFile.open("D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\InputData\\OptimizingVehicleID.dat", ios::in);
+
+	readOptimizingVehicleIDFile >> optimiazedVehID;
+	readOptimizingVehicleIDFile.close();
+
+}
 int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 {
 
@@ -269,7 +280,7 @@ int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 	return action;
 }
 
-int convertQActionToDirection(int Qaction)
+int behavioralModelParticular::convertQActionToDirection(int Qaction)
 {
 	int direction = 0;
 	switch (Qaction)
@@ -420,17 +431,34 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 
 	unsigned int stateID = 0;
 
-	stateID =
-		state_diff_ac_left *(int)pow(10, 8)
-		+ state_diff_ac_right* (int)pow(10, 7)
-		+ state_diff_an_left  *(int)pow(10, 6)
-		+ state_diff_ao * (int)pow(10, 5)
-		+ state_diff_an_right* (int)pow(10, 4)
-		+ state_diff_mean_left *(int)pow(10, 3)
-		+ state_diff_sd_left *(int)pow(10, 2)
-		+ state_diff_mean_right *(int)pow(10, 1)
-		+ state_diff_sd_right * (int)pow(10, 0);
+	if (useFarSightInfo)
+	{
+		stateID =
+			state_diff_ac_left *(int)pow(10, 8)
+			+ state_diff_ac_right* (int)pow(10, 7)
+			+ state_diff_an_left  *(int)pow(10, 6)
+			+ state_diff_ao * (int)pow(10, 5)
+			+ state_diff_an_right* (int)pow(10, 4)
+			+state_diff_mean_left *(int)pow(10, 3)
+			+ state_diff_sd_left *(int)pow(10, 2)
+			+ state_diff_mean_right *(int)pow(10, 1)
+			+ state_diff_sd_right * (int)pow(10, 0);
 
+	}
+	else
+	{
+		stateID =
+			state_diff_ac_left *(int)pow(10, 8)
+			+ state_diff_ac_right* (int)pow(10, 7)
+			+ state_diff_an_left  *(int)pow(10, 6)
+			+ state_diff_ao * (int)pow(10, 5)
+			+ state_diff_an_right* (int)pow(10, 4)
+			+ 0 * (int)pow(10, 3)
+			+ 0 * (int)pow(10, 2)
+			+ 0 * (int)pow(10, 1)
+			+ 0 * (int)pow(10, 0);
+	}
+	
 	return stateID;
 }
 
@@ -638,13 +666,13 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(unsigned int
 	}
 }
 
-float getRewardQLearning(double previous_acceleration, double current_acceleartion)
+float behavioralModelParticular::getRewardQLearning(double previous_acceleration, double current_acceleartion)
 {
 	float reward = 0;
 	reward = (float)(current_acceleartion - previous_acceleration);
 	return reward;
 }
-float maxQActionValueForState(unsigned int stateID)
+float behavioralModelParticular::maxQActionValueForState(unsigned int stateID)
 {
 	int stateCode[10] = { 0 };
 	for (int i = 0; i <= 8; ++i)
@@ -666,11 +694,30 @@ float maxQActionValueForState(unsigned int stateID)
 
 }
 
+
 void behavioralModelParticular::updateQTable(A2SimVehicle *vehicle)
 {
 	int vehID = vehicle->getId();
-	unsigned int previous_stateID = q_Learning.stateID_last[vehID];
-	int previous_action = q_Learning.action_last[vehID];
+	unsigned int previous_stateID = q_Learning.stateID_previous[vehID];
+
+
+	int previous_action = 0;
+	int previous_AbsLane = getNetWorkAbsoluteLaneID(q_Learning.sectionID_previous[vehID], q_Learning.lane_previous[vehID]);
+	int current_AbsLane= getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
+	if (current_AbsLane - previous_AbsLane == 0)
+	{
+		previous_action = 0; // had not changed lane
+	}
+	else if (current_AbsLane - previous_AbsLane == 1)
+	{
+		previous_action = 1; // had changed to left
+	}
+	if (current_AbsLane - previous_AbsLane == -1)
+	{
+		previous_action = 2; // had changed to right
+	}
+
+
 	unsigned int current_stateID = getStateID_QLearning(vehicle);
 	A2SimVehicle *pVehCurUp = NULL;
 	A2SimVehicle *pVehCurDw = NULL;
@@ -678,7 +725,7 @@ void behavioralModelParticular::updateQTable(A2SimVehicle *vehicle)
 	//get current lane follower and leader
 	vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
 	double current_acceleration = get_IDM_acceleration(vehicle, pVehCurDw);
-	double previous_acceleration = q_Learning.previous_acceleration[vehID];
+	double previous_acceleration = q_Learning.acceleration_previous[vehID];
 
 	int stateCode[10] = { 0 };
 	for (int i = 0; i <= 8; ++i)
@@ -702,9 +749,9 @@ void behavioralModelParticular::updateQTable(A2SimVehicle *vehicle)
 
 
 
-	q_Learning.previous_acceleration[vehID] = current_acceleration;
-	q_Learning.action_last[vehID] = previous_action;
-	q_Learning.stateID_last[vehID] = current_stateID;
+	q_Learning.acceleration_previous[vehID] = current_acceleration;
+	q_Learning.lane_previous[vehID] = current_AbsLane;
+	q_Learning.stateID_previous[vehID] = current_stateID;
 
 
 
@@ -712,7 +759,7 @@ void behavioralModelParticular::updateQTable(A2SimVehicle *vehicle)
 }
 
 // main sections mean that they are not turn, node, on/off-ramp or inputflow section 
-bool isMainSection(int sectionID) //all sections on the mainroad
+bool behavioralModelParticular::isMainSection(int sectionID) //all sections on the mainroad
 {
 	switch (sectionID)
 	{
@@ -751,7 +798,7 @@ bool isMainSection(int sectionID) //all sections on the mainroad
 Special Sections' lane 1 is acceleration lane or off-ramp lane
 In NetWorkAbsoluteLane, the lane ID of accelaeration lane and off-ramp lane is 0
 */
-int getNetWorkAbsoluteLaneID(int sectionID, int curSectionLane)
+int  behavioralModelParticular::getNetWorkAbsoluteLaneID(int sectionID, int curSectionLane)
 {
 
 	switch (sectionID)
@@ -777,7 +824,7 @@ int getNetWorkAbsoluteLaneID(int sectionID, int curSectionLane)
 
 }
 
-bool isExitSection(int sectionID)
+bool behavioralModelParticular::isExitSection(int sectionID)
 {
 	switch (sectionID)
 	{
@@ -792,7 +839,7 @@ bool isExitSection(int sectionID)
 }
 
 // if it's not a entry section, return -1, else return sequence 
-int getEntrySectionSequence(int sectionID)
+int behavioralModelParticular::getEntrySectionSequence(int sectionID)
 {
 	switch (sectionID)
 	{
@@ -808,7 +855,7 @@ int getEntrySectionSequence(int sectionID)
 }
 
 // this test function should be integrated into outPutControlGroupVehiclesODInfo()
-bool isControlGroupVehicle(int referenceVehicleID, int testVehicleID)
+bool behavioralModelParticular::isControlGroupVehicle(int referenceVehicleID, int testVehicleID)
 {
 
 	if (// 1. time window comparison
@@ -828,7 +875,7 @@ bool isControlGroupVehicle(int referenceVehicleID, int testVehicleID)
 }
 
 // record travel time, path length and OD
-void recordAllVehicleODInfo(A2SimVehicle *vehicle)
+void behavioralModelParticular::recordAllVehicleODInfo(A2SimVehicle *vehicle)
 {
 
 
@@ -836,6 +883,9 @@ void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 	double currTime = AKIGetCurrentSimulationTime(); // seconds
 	int currSectionID = vehicle->getIdCurrentSection();
 
+	// record isSmartVehicle
+	simVehicleParticular * vehicle_temp = (simVehicleParticular*)vehicle;
+	allVehicleODInfoDataSet[vehID].isSmartVehicle = vehicle_temp->getIsSmartVehicle();
 
 	// record time infomation
 	if (allVehicleODInfoDataSet[vehID].entryTime == 0)
@@ -875,7 +925,7 @@ void recordAllVehicleODInfo(A2SimVehicle *vehicle)
 
 }
 
-void recordControlGroupTrajectory(int referenceVehicleID, A2SimVehicle *testVehicle)
+void behavioralModelParticular::recordControlGroupTrajectory(int referenceVehicleID, A2SimVehicle *testVehicle)
 {
 	int testVehicleID = testVehicle->getId();
 	double currTime = AKIGetCurrentSimulationTime(); // seconds
@@ -957,7 +1007,7 @@ void recordControlGroupTrajectory(int referenceVehicleID, A2SimVehicle *testVehi
 
 }
 
-void recordOptVehicleTravelTime(double currTime)
+void behavioralModelParticular::recordOptVehicleTravelTime(double currTime)
 {
 	if (optVehDataSet.entryTime == 0)
 		optVehDataSet.entryTime = currTime;
@@ -967,7 +1017,7 @@ void recordOptVehicleTravelTime(double currTime)
 		optVehDataSet.totalTravelTime = optVehDataSet.exitTime - optVehDataSet.entryTime;
 
 }
-void recordOptVehiclePathLength(A2SimVehicle * vehicle)
+void behavioralModelParticular::recordOptVehiclePathLength(A2SimVehicle * vehicle)
 {
 	int currentSectionID = vehicle->getIdCurrentSection();
 	// record path length each time step
@@ -990,7 +1040,7 @@ void recordOptVehiclePathLength(A2SimVehicle * vehicle)
 		optVehDataSet.totalTravelPathLength = optVehDataSet.pathLengthBySection + vehicle->getPosition(0);
 	}
 }
-void recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
+void behavioralModelParticular::recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 {
 	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getNumberOfLanesInCurrentSection());
 	if (optVehDataSet.preLane != currAbsoluteLaneID && getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1)
@@ -1077,7 +1127,7 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 	// if leaders are too far, ignore them
 	if (leaders_current[1] != NULL)
 	{
-		if (currentVehicle->getPositionReferenceVeh(0, leaders_current[1], 0) > 250)
+		if (currentVehicle->getPositionReferenceVeh(0, leaders_current[1], 0) > farSightInfoLimit)
 		{
 			leaders_current[1] = NULL;
 		}
@@ -1085,7 +1135,7 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 
 	if (leaders_right[1] != NULL)
 	{
-		if (currentVehicle->getPositionReferenceVeh(0, leaders_right[1], 0) > 250)
+		if (currentVehicle->getPositionReferenceVeh(0, leaders_right[1], 0) > farSightInfoLimit)
 		{
 			leaders_right[1] = NULL;
 		}
@@ -1093,7 +1143,7 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 
 	if (leaders_left[1] != NULL)
 	{
-		if (currentVehicle->getPositionReferenceVeh(0, leaders_left[1], 0) > 250)
+		if (currentVehicle->getPositionReferenceVeh(0, leaders_left[1], 0) > farSightInfoLimit)
 		{
 			leaders_left[1] = NULL;
 		}
@@ -1215,7 +1265,7 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 
 }
 
-void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int currSectionID)
+void behavioralModelParticular::recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int currSectionID)
 {
 
 
@@ -1241,7 +1291,7 @@ void recordOptVehiclTrajectory(A2SimVehicle *vehicle, double currentTime, int cu
 }
 
 
-void inputParameterSetFromAFT()
+void behavioralModelParticular::inputParameterSetFromAFT()
 {
 	if (!haveInPutFunctionsRan)
 	{
@@ -1272,7 +1322,7 @@ void inputParameterSetFromAFT()
 }
 
 
-void inputQTable()
+void behavioralModelParticular::inputQTable()
 {
 	if (!hasInputQTable)
 	{
@@ -1322,7 +1372,7 @@ void inputQTable()
 		hasInputQTable = true;
 	}
 }
-void outPutQTableAndTotalReward()
+void behavioralModelParticular::outPutQTableAndTotalReward()
 {
 	string outPutQTableFullPath;
 	string outPutQTableFileName = "QTable.dat";
@@ -1395,7 +1445,7 @@ void outPutQTableAndTotalReward()
 }
 
 //filter control Group Vehicles from allVehicleODInfo and output
-void outPutControlGroupVehiclesODInfo()
+void behavioralModelParticular::outPutControlGroupVehiclesODInfo()
 {
 	string outPutControlGroupVehicleODInfoFullPath;
 	string outPutControlGroupVehicleODInfoFileName = "ControlGroupVehicleODInfo.dat";
@@ -1435,7 +1485,7 @@ void outPutControlGroupVehiclesODInfo()
 }
 
 
-void outPutAllVehicleODInfo()
+void behavioralModelParticular::outPutAllVehicleODInfo()
 {
 	string outPutAllVehicleODInfoFullPath;
 	string outPutAllVehicleODInfoFileName = "AllVehicleODInfo.dat";
@@ -1461,6 +1511,7 @@ void outPutAllVehicleODInfo()
 			<< allVehicleODInfoDataSet[vehID].entrySection << "\t"
 			<< allVehicleODInfoDataSet[vehID].exitSection << "\t"
 			<< allVehicleODInfoDataSet[vehID].entryTime << "\t"
+			<< allVehicleODInfoDataSet[vehID].exitTime << "\t"
 			<< allVehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
 			<< allVehicleODInfoDataSet[vehID].totalTravelTime << "\t"
 			<< allVehicleODInfoDataSet[vehID].totalTravelTime / allVehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << "\t"
@@ -1476,7 +1527,7 @@ void outPutAllVehicleODInfo()
 
 
 
-void outPutOptVehTrajectoryDataSet()
+void behavioralModelParticular::outPutOptVehTrajectoryDataSet()
 {
 	string outPutOptVehTrajectoryFullPath;
 	string outPutOptVehTrajectoryFileName = "OptVehTrajectoryDataSet.dat";
@@ -1507,7 +1558,7 @@ void outPutOptVehTrajectoryDataSet()
 }
 
 
-void outPutOptVehLaneChangingDetials()
+void behavioralModelParticular::outPutOptVehLaneChangingDetials()
 {
 
 	string outPutLaneChangingFullPath;
@@ -1546,7 +1597,7 @@ void outPutOptVehLaneChangingDetials()
 
 }
 
-void outPutControlGroupVehiclesTrajectory()
+void behavioralModelParticular::outPutControlGroupVehiclesTrajectory()
 {
 	string outPutOptVehTrajectoryFullPath;
 	string outPutOptVehTrajectoryFileName = "ControlGroupVehiclesTrajectories.dat";
@@ -1581,7 +1632,7 @@ void outPutControlGroupVehiclesTrajectory()
 
 }
 
-void outPutOptVehPerformance()
+void behavioralModelParticular::outPutOptVehPerformance()
 {
 	string outPutPerformanceFullPath;
 	string outPutPerformanceFileName = "Performance.txt";
@@ -1595,7 +1646,7 @@ void outPutOptVehPerformance()
 }
 
 // iteration vehicle id, OD and time information about entry and exit
-void outPutOptVehData()
+void behavioralModelParticular::outPutOptVehData()
 {
 	string outPutDataFullPath;
 	string outPutDataFileName = "OptimizedVehicleData.txt";
@@ -1626,7 +1677,7 @@ void outPutOptVehData()
 
 }
 
-void outPutStatisticsData()
+void behavioralModelParticular::outPutStatisticsData()
 {
 	string outPutDataFullPath;
 	string outPutDataFileName = "SectionStatisticsData.dat";
@@ -2106,6 +2157,11 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 			hasReadSmartVehiclePenetrationRate = true;
 		}
 
+		if (useOutSideInPut_OptimizingVehicleID && (!hasReadOptimizingVehicleID))
+		{
+			readOptimizingVehicleID();
+			hasReadOptimizingVehicleID = true;
+		}
 
 		if (AKIGetRandomNumber() < penetrationOfSmartVehicles) // penetrationOfSmartVehicles, default value = 0
 		{
@@ -2252,6 +2308,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		else
 		{
 			outPutStatisticsData();
+			outPutAllVehicleODInfo();
 		}
 
 		haveOutPutFunctionsRan = true;
@@ -2857,11 +2914,13 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		/************ TEST OUTPUT ************/
 
 
-
-		if ((currSectionID == 386 && currLane == 2 && direction == 1)
-		|| (currSectionID == 406 && currLane == 2 && direction == 1))
+		if (isForbidSVExitFromOffRamp)
 		{
-			direction = 0;
+			if ((currSectionID == 386 && currLane == 2 && direction == 1)
+				|| (currSectionID == 406 && currLane == 2 && direction == 1))
+			{
+				direction = 0;
+			}
 		}
 
 

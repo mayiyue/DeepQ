@@ -64,10 +64,13 @@ public:
 	double get_IDM_acceleration(A2SimVehicle * vehicle_p, A2SimVehicle * leader_p);
 	
 
+	void readSmartVehiclePenetrationRate();
 
-	double getModifiedThreshold(A2SimVehicle * vehicle, int targetLane);
+	void readOptimizingVehicleID();
 
 	int getQLearningDecisionAction(A2SimVehicle * vehicle);
+
+	int convertQActionToDirection(int Qaction);
 
 	unsigned int getStateID_QLearning(A2SimVehicle * vehicle);
 
@@ -77,12 +80,60 @@ public:
 
 	int getAvailableActionRandomly_Qlearning(unsigned int stateID, A2SimVehicle * vehicle);
 
+	float getRewardQLearning(double previous_acceleration, double current_acceleartion);
+
+	float maxQActionValueForState(unsigned int stateID);
+
 	void updateQTable(A2SimVehicle * vehicle);
 
-	
-	void getLeadersAccelerationsDistributionDifference(A2SimVehicle * currentVehicle, double & diff_left_mean, double & diff_left_sd, double & diff_right_mean, double & diff_right_sd);
+	bool isMainSection(int sectionID);
+
+	int getNetWorkAbsoluteLaneID(int sectionID, int curSectionLane);
+
+	bool isExitSection(int sectionID);
+
+	int getEntrySectionSequence(int sectionID);
+
+	bool isControlGroupVehicle(int referenceVehicleID, int testVehicleID);
+
+	void recordAllVehicleODInfo(A2SimVehicle * vehicle);
+
+	void recordControlGroupTrajectory(int referenceVehicleID, A2SimVehicle * testVehicle);
 
 	
+	void recordOptVehicleTravelTime(double currTime);
+
+	void recordOptVehiclePathLength(A2SimVehicle * vehicle);
+
+	void recordOptVehiclLaneChangingInfo(A2SimVehicle * vehicle);
+
+	void getLeadersAccelerationsDistributionDifference(A2SimVehicle * currentVehicle, double & diff_left_mean, double & diff_left_sd, double & diff_right_mean, double & diff_right_sd);
+
+	void recordOptVehiclTrajectory(A2SimVehicle * vehicle, double currentTime, int currSectionID);
+
+	void inputParameterSetFromAFT();
+
+	void inputQTable();
+
+	void outPutQTableAndTotalReward();
+
+	
+
+	void outPutControlGroupVehiclesODInfo();
+
+	void outPutAllVehicleODInfo();
+
+	void outPutOptVehTrajectoryDataSet();
+
+	void outPutOptVehLaneChangingDetials();
+
+	void outPutControlGroupVehiclesTrajectory();
+
+	void outPutOptVehPerformance();
+
+	void outPutOptVehData();
+
+	void outPutStatisticsData();
 
 };
 
