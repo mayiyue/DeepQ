@@ -10,30 +10,30 @@ class A2BEHAVIORALEXPORT simVehicleParticular: public A2SimVehicle
 private:
 	float newAttribute;
 
-	bool isACC;
+	bool isCACC;
 	
 	bool isSmartVehicle;
-	double aCCTimeGap;
+	double aCCModeTimeGap;
 public:
 	
 	simVehicleParticular ( void *handlerVehicle, unsigned short idhandler,bool isFictitiousVeh );
 	~ simVehicleParticular ();
 
-	void setIsACC(bool setValue);
-	const double getACCTimeGap() const;
-	const bool getIsACC() const;
+	void setIsCACC(bool setValue);
+	const double getACCModeTimeGap() const;
+	const bool getIsCACC() const;
 	void setTimeGapOfACC(double setValue);
 
 	const bool getIsSmartVehicle() const;
 	void setIsSmartVehicle(bool setValue);
 
 
-	void setPlatoonPosition(int setValue);
+	void setCACCPlatoonPosition(int setValue);
 	void setPreT_CACC(double setValue);
 
-	int const platoonMaxSize = 5;
-	int platoonPosition;
-	const int getPlatoonPosition()const;
+	int const platoonMaxSizeCACC = 5;
+	int platoonPositionCACC;
+	const int getPlatoonPositionCACC()const;
 
 	const double getPreT_CACC()const;
 	double preT_CACC;

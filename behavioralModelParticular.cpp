@@ -60,15 +60,13 @@ double const penetrationOfACC = 1;
 double const lowLimitOfACCTimeGap = 0.5;
 double const upLimitOfACCTimeGap = 0.7;
 
-
-
 //for CACC longitudinal model
 double const t_plat = 0.5; // sec
 double const t_ACC = 1.0; // sec
 double const platoonMaxSize = 5; // a platoon consists no more than 5 equipped cars.
 double const t_relaxationtime = 25; // sec
 double const k = 0.5;
-
+double const joinCACCPlatoonDistanceLimit = 100; //m
 
 
 
@@ -2104,9 +2102,9 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 		// for ACC
 		if (AKIGetRandomNumber() < penetrationOfACC)
 		{
-			newVehicle->setIsACC(true);
+			newVehicle->setIsCACC(true);
 			newVehicle->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
-			newVehicle->setPreT_CACC(newVehicle->getACCTimeGap());
+			newVehicle->setPreT_CACC(newVehicle->getACCModeTimeGap());
 		}
 
 
@@ -2833,7 +2831,13 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 	}
 	/************ otherwise, normal lane changing *************/
-	if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
+	else if (vehicle_particular_Temp->getPlatoonPositionCACC() != 0)
+	{
+		// if CACC equipped vehicle is in platoon, it will not change lanes except Mandatory Heuristic 
+		vehicle->applyLaneChanging(0, threadId);
+		return true;
+	}
+	else if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
 	{
 
 
@@ -2941,16 +2945,11 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 
 		return true;
 	}
-	else if (vehicle_particular_Temp->getPlatoonPosition() != 0)
-	{
-		vehicle->applyLaneChanging(0, threadId);
-	}
-	else
-	{
-		// use default Gipps lane change model
-		return false;
 
-	}
+
+
+	// if above function did not return the value, return false, that is, use default Gipps lane change model
+	return false;
 
 }
 
@@ -3162,9 +3161,9 @@ double behavioralModelParticular::getIDMAccelerationSpeed(simVehicleParticular *
 	double X = VelActual / VelDeseada;
 	double a = vehicle->getAcceleration();
 	double acceleration = 0;
-	if (vehicle->getIsACC())
+	if (vehicle->getIsCACC())
 	{
-		acceleration = getEquippedCarAcceleration(vehicle, NULL);
+		acceleration = getCACCEquippedVehicleAcceleration(vehicle, NULL);
 	}
 	else
 	{
@@ -3300,9 +3299,9 @@ double behavioralModelParticular::getIDMDecelerationSpeed(simVehicleParticular *
 		double bkin = (VelAnterior*VelAnterior) / (2 * GapAnterior);
 		double acceleration;
 
-		if (vehicle->getIsACC() && (!leader->isFictitious()))
+		if (vehicle->getIsCACC() && (!leader->isFictitious()))
 		{
-			acceleration = getEquippedCarAcceleration(vehicle, leader);
+			acceleration = getCACCEquippedVehicleAcceleration(vehicle, leader);
 		}
 		else
 		{
@@ -3957,95 +3956,98 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 }
 
 
-
-
-//T_CACC formulation
-double behavioralModelParticular::getEquippedCarTimeGap(simVehicleParticular*vehicle, simVehicleParticular*leader)
+// platoon strategy
+bool behavioralModelParticular::whetherJoinThePlatoon(simVehicleParticular*vehicle, simVehicleParticular*leader, double joinDistanceLimit)
 {
 
+	double currentSpeed, pos_cur, speed_leader, pos_leader;
+	double shift_temp = 0;
+	double shift_leader = 0;
+	double distanceToLeader = vehicle->getGap(shift_temp, leader, shift_leader, pos_cur, currentSpeed, pos_leader, speed_leader);
 
-	bool leaderIsACC = leader->getIsACC();
 
-	double t_tar;
-
-	if (leader->getIsACC() && leader->getPlatoonPosition() < platoonMaxSize)
+	if (leader->getIsCACC()
+		&& leader->getPlatoonPositionCACC() < platoonMaxSize
+		&& distanceToLeader < joinDistanceLimit)
 	{
-		t_tar = t_plat;
+		return true;
 	}
 	else
 	{
-		t_tar = vehicle->getACCTimeGap();
+		return false;
 	}
-
-	
-	double t_CACC_pre = vehicle->getPreT_CACC();
-
-	double t = t_CACC_pre + (t_tar - t_CACC_pre) / t_relaxationtime;
-
-	/*double T_cur = (s - (vehicle->getMinimumDistanceInterVeh())) / (vehicle->getSpeed(vehicle->isUpdated()));*/
-	double t_cur = vehicle->getACCTimeGap();
-	double t_CACC = min(t, max(t_cur, t_plat));
-
-	vehicle->setPreT_CACC(t_CACC);
-
-	return t_CACC;
 }
 
 
-
 //equipped car acceleration formulation
-double behavioralModelParticular::getEquippedCarAcceleration(simVehicleParticular*vehicle, simVehicleParticular*leader)
+double behavioralModelParticular::getCACCEquippedVehicleAcceleration(simVehicleParticular*vehicle, simVehicleParticular*leader)
 {
 
 	if (leader == NULL)
 	{
-		vehicle->setPlatoonPosition(1);
+		vehicle->setCACCPlatoonPosition(1);
 		return vehicle->getAcceleration();
 	}
 	else
 	{
-		int leaderPlatoonPos = leader->getPlatoonPosition();
+		// Calculate parameters separately, from down to top 
 
-		bool isLeaderACC = leader->getIsACC();
-		double shift_leader_temp = 0;
-		double acceleration_leader = get_IDM_acceleration(leader, (simVehicleParticular*)leader->getRealLeader(shift_leader_temp));
-		double a_CACC = vehicle->getAcceleration();
+		// Calculate T', T_CACC
+		double t_tar = 0;
+		if (whetherJoinThePlatoon(vehicle, leader, joinCACCPlatoonDistanceLimit))
+		{
+			t_tar = t_plat;
+		}
+		else
+		{
+			t_tar = vehicle->getACCModeTimeGap();
+		}
+		double t_CACC_pre = vehicle->getPreT_CACC();
+		double t = t_CACC_pre + (t_tar - t_CACC_pre) / t_relaxationtime;
+		double t_cur = vehicle->getACCModeTimeGap();
+		double t_CACC = min(t, max(t_cur, t_plat));
+		vehicle->setPreT_CACC(t_CACC);
+		double timeGap = t_CACC;
 
+
+
+		// Calculate s_CACC
+		double a = vehicle->getAcceleration();
+		double b = -vehicle->getDeceleration();
+		double s_CACC = vehicle->getMinimumDistanceInterVeh() + vehicle->getSpeed(0) * timeGap + vehicle->getSpeed(0)*(vehicle->getSpeed(0) - leader->getSpeed(0)) / (2 * sqrt(a*b)); // replace with 2 * sqrt
+
+
+
+		// Calculate s
 		double currentSpeed, pos_cur, speed_leader, pos_leader;
 		double shift_temp = 0;
 		double shiftLeader = 0;
-		double s = max(0,vehicle->getGap(shift_temp, leader, shiftLeader, pos_cur, currentSpeed, pos_leader, speed_leader)); // sometime it will return a value less than 0, I guess it's a bug of AIMSUN
+		double s = max(0, vehicle->getGap(shift_temp, leader, shiftLeader, pos_cur, currentSpeed, pos_leader, speed_leader)); // sometime it will return a value less than 0, I guess it's a bug of AIMSUN
 
-
-		double timeGap = getEquippedCarTimeGap(vehicle, leader);
-
-		double a = vehicle->getAcceleration();
-		double b = -vehicle->getDeceleration();
-	
-		double s_CACC = vehicle->getMinimumDistanceInterVeh() + currentSpeed*timeGap + currentSpeed*(currentSpeed - speed_leader) / (2 * sqrt(a*b)); // replace with 2 * sqrt
-
-
-
+		// Calculate a_intACC, a_int
 		double a_intACC = 1 - (s_CACC / s) * (s_CACC / s);
 		double a_int = 0;
-
-		if ((leaderPlatoonPos < platoonMaxSize) && (leader->getIsACC())&& s<500)
+		double shift_leader2_temp = 0;
+		double acceleration_leader = get_IDM_acceleration(leader, (simVehicleParticular*)leader->getRealLeader(shift_leader2_temp));
+		double a_CACC = vehicle->getAcceleration();
+		double measuredGap = s / vehicle->getSpeed(0);
+		if (t_tar == t_plat && t_tar < vehicle->getACCModeTimeGap() && measuredGap <  vehicle->getACCModeTimeGap())
 		{
 			a_int = a_intACC*(1 - k) + k*acceleration_leader / a_CACC;
-			vehicle->setPlatoonPosition(leaderPlatoonPos + 1);
+			vehicle->setCACCPlatoonPosition(leader->getPlatoonPositionCACC() + 1);
 		}
 		else
 		{
 			a_int = a_intACC;
 		}
 
+
+
+
+		// Calculate return acceleration
 		double X = vehicle->getSpeed(vehicle->isUpdated()) / vehicle->getFreeFlowSpeed();
 		double acceleration = a_CACC * min(a_int, (1 - pow(X, 4)));
 
-		if (vehicle->getId() ==1935&&acceleration<0.01)
-		{
-			int test = 1;
-		}
 
 
 

@@ -49,11 +49,12 @@ public:
 
 	int MOBILDirection(A2SimVehicle * vehicle, double p = 0.5, double a_threshold = 1, double bsafe = -5);
 
-	double getEquippedCarTimeGap(simVehicleParticular * vehicle, simVehicleParticular * leader);
+	bool isInCACCPlatoon(double t_tar, double t_cur, double t_platoon, double t_ACC);
 
-	double getEquippedCarDesiredGap(simVehicleParticular * pVehCur, simVehicleParticular * leader, double speed_current, double speed_leader, double gap_to_leader);
+	bool whetherJoinThePlatoon(simVehicleParticular * vehicle, simVehicleParticular * leader, double joinDistanceLimit);
 
-	double getEquippedCarAcceleration(simVehicleParticular * vehicle, simVehicleParticular * leader);
+	
+	double getCACCEquippedVehicleAcceleration(simVehicleParticular * vehicle, simVehicleParticular * leader);
 
 	double getGippsAccelerationSpeed(simVehicleParticular *vehicle,double VelActual,double VelDeseada, double RestoCiclo);
 	double getGippsDecelerationSpeed(simVehicleParticular *vehicle,double Shift,simVehicleParticular *leader,double ShiftLeader,bool controlDecelMax,bool aside,int time);

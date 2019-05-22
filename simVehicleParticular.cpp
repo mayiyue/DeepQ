@@ -3,7 +3,7 @@
 simVehicleParticular:: simVehicleParticular ( void *handlerVehicle, unsigned short idhandler,bool isFictitiousVeh ) : A2SimVehicle( handlerVehicle, idhandler,isFictitiousVeh )
 {
 	isSmartVehicle = false;
-	isACC = false;
+	isCACC = false;
 
 	
 }
@@ -12,21 +12,21 @@ simVehicleParticular::~simVehicleParticular ()
 }
 
 
-const double simVehicleParticular::getACCTimeGap() const
+const double simVehicleParticular::getACCModeTimeGap() const
 {
-	return aCCTimeGap;
+	return aCCModeTimeGap;
 }
-const bool simVehicleParticular::getIsACC() const
+const bool simVehicleParticular::getIsCACC() const
 {
-	return isACC;
+	return isCACC;
 }
 void simVehicleParticular::setTimeGapOfACC(double setValue)
 {
-	aCCTimeGap = setValue;
+	aCCModeTimeGap = setValue;
 }
-void simVehicleParticular::setIsACC(bool setValue)
+void simVehicleParticular::setIsCACC(bool setValue)
 {
-	isACC = setValue;
+	isCACC = setValue;
 }
 
 
@@ -42,13 +42,13 @@ void simVehicleParticular::setIsSmartVehicle(bool setValue)
 
 
 
-const int simVehicleParticular::getPlatoonPosition() const
+const int simVehicleParticular::getPlatoonPositionCACC() const
 {
-	return platoonPosition;
+	return platoonPositionCACC;
 }
-void simVehicleParticular::setPlatoonPosition(int setValue)
+void simVehicleParticular::setCACCPlatoonPosition(int setValue)
 {
-	platoonPosition = setValue;
+	platoonPositionCACC = setValue;
 }
 
 
