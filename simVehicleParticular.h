@@ -31,7 +31,7 @@ public:
 	void setCACCPlatoonPosition(int setValue);
 	void setPreT_CACC(double setValue);
 
-	int const platoonMaxSizeCACC = 5;
+
 	int platoonPositionCACC;
 	const int getPlatoonPositionCACC()const;
 

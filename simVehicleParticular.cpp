@@ -4,7 +4,7 @@ simVehicleParticular:: simVehicleParticular ( void *handlerVehicle, unsigned sho
 {
 	isSmartVehicle = false;
 	isCACC = false;
-
+	platoonPositionCACC = 0;
 	
 }
 simVehicleParticular::~simVehicleParticular ()

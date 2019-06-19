@@ -34,6 +34,7 @@ using namespace std;
 // controllers on-off
 bool const needTestMsg = false;
 bool const isTrainingQLearning = false;
+bool const useFarSightInfo = true;
 bool const isTestSingleVehicle = false;
 bool const isForbidSVExitFromOffRamp = false;
 bool const useIDM = true;
@@ -41,9 +42,8 @@ bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
 bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
-bool const useQLearning = false;
-bool const useFarSightInfo = false;
-bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
+bool const useQLearning = true;
+bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
 bool const useOutSideInPut_OptimizingVehicleID = false;
 
 // triggers
@@ -56,7 +56,7 @@ bool hasOutPutFilesInitiated = false;
 bool hasReadOptimizingVehicleID = false;
 
 // for IDM, (C)ACC
-double const penetrationOfACC = 1;
+double const penetrationOfACC = 0;
 double const lowLimitOfACCTimeGap = 0.5;
 double const upLimitOfACCTimeGap = 0.7;
 
@@ -71,11 +71,11 @@ double const joinCACCPlatoonDistanceLimit = 100; //m
 
 
 // for q learning 
-double const laneChangingThresholdForQL = 0;
+double const laneChangingThresholdForQL = 1; // when training, it will not work
 int const numberOfEnvState = 6;
 double const farSightInfoLimit = 250; // m
 
-// for Optimizing Working
+// for lane changing Optimizing Working
 double  penetrationOfSmartVehicles = 0;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
 // a new vehicle entry into the network will be setted as optimized vehicle 
@@ -131,9 +131,10 @@ struct {
 	double totalTravelTime;
 	double totalTravelPathLength;
 	int preSectionID;
-	int laneChangingTimes;
+	int preLane; // absolute Lane ID
+	int totalLaneChangingTimes;
 	bool isSmartVehicle; // TEST for SV demand
-}allVehicleODInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
+}allVehicleSketchyInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
 
 struct TrajectoryData {
 	double time;
@@ -554,24 +555,47 @@ int behavioralModelParticular::getMaxQValueAction(unsigned int stateID, A2SimVeh
 	float rightDirectionqQuality = q_Learning.q_table[stateCode[8]][stateCode[7]][stateCode[6]][stateCode[5]][stateCode[4]][stateCode[3]][stateCode[2]][stateCode[1]][stateCode[0]][2];
 
 
+	if (isTrainingQLearning)
+	{
+		if ((curlane < maxlane)// left is possible
+			&& (leftDirectionqQuality > currentDirectionQuality && leftDirectionqQuality >= rightDirectionqQuality)
+			)
+		{
+			return 1;// turn left
+		}
+		else if ((curlane > 1) // right is possible
+			&& (rightDirectionqQuality > currentDirectionQuality && rightDirectionqQuality > leftDirectionqQuality)
+			)
+		{
+			return 2; // turn right
+		}
+		else
+		{
+			return 0; // do not change lane
+		}
 
-	if ((curlane < maxlane)// left is possible
-		&& (leftDirectionqQuality > currentDirectionQuality && leftDirectionqQuality >= rightDirectionqQuality)
-		&& leftDirectionqQuality > laneChangingThresholdForQL
-		)
-	{
-		return 1;// turn left
-	}
-	else if ((curlane > 1) // right is possible
-		&& (rightDirectionqQuality > currentDirectionQuality && rightDirectionqQuality > leftDirectionqQuality)
-		&& rightDirectionqQuality > laneChangingThresholdForQL
-		)
-	{
-		return 2; // turn right
 	}
 	else
 	{
-		return 0; // do not change lane
+		if ((curlane < maxlane)// left is possible
+			&& (leftDirectionqQuality > currentDirectionQuality && leftDirectionqQuality >= rightDirectionqQuality)
+			&& leftDirectionqQuality > laneChangingThresholdForQL
+			)
+		{
+			return 1;// turn left
+		}
+		else if ((curlane > 1) // right is possible
+			&& (rightDirectionqQuality > currentDirectionQuality && rightDirectionqQuality > leftDirectionqQuality)
+			&& rightDirectionqQuality > laneChangingThresholdForQL
+			)
+		{
+			return 2; // turn right
+		}
+		else
+		{
+			return 0; // do not change lane
+		}
+
 	}
 
 }
@@ -582,37 +606,6 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(unsigned int
 	int curLane = vehicle->getIdCurrentLane();
 
 	int maxLanes = vehicle->getNumberOfLanesInCurrentSection();
-
-
-	A2SimVehicle *pVehLeftDw = NULL;
-	A2SimVehicle *pVehLeftUp = NULL;
-	A2SimVehicle *pVehRightDw = NULL;
-	A2SimVehicle *pVehRightUp = NULL;
-	A2SimVehicle *pVehCurUp = NULL;
-	A2SimVehicle *pVehCurDw = NULL;
-
-	double shiftCurUp = 0, shiftCurDw = 0;
-	double ShiftUpLeft = 0, ShiftDwLeft = 0;
-	double ShiftUpRight = 0, ShiftDwRight = 0;
-
-
-	/*******************************************************************/
-
-	//get current lane follower and leader
-	vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
-
-	//get left lane follower and leader
-	vehicle->getUpDown(-1, vehicle->getPosition(0), pVehLeftUp, ShiftUpLeft, pVehLeftDw, ShiftDwLeft);
-
-	//get right lane follower and leader
-	vehicle->getUpDown(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
-
-
-
-
-
-
-
 
 	double randNUM = AKIGetRandomNumber();
 
@@ -868,12 +861,12 @@ bool behavioralModelParticular::isControlGroupVehicle(int referenceVehicleID, in
 {
 
 	if (// 1. time window comparison
-		allVehicleODInfoDataSet[testVehicleID].entryTime > allVehicleODInfoDataSet[referenceVehicleID].entryTime - 30
-		&& allVehicleODInfoDataSet[testVehicleID].entryTime < allVehicleODInfoDataSet[referenceVehicleID].entryTime + 30
+		allVehicleSketchyInfoDataSet[testVehicleID].entryTime > allVehicleSketchyInfoDataSet[referenceVehicleID].entryTime - 30
+		&& allVehicleSketchyInfoDataSet[testVehicleID].entryTime < allVehicleSketchyInfoDataSet[referenceVehicleID].entryTime + 30
 		// 2. OD comparison
-		&& allVehicleODInfoDataSet[testVehicleID].entrySection == allVehicleODInfoDataSet[referenceVehicleID].entrySection
-		&& allVehicleODInfoDataSet[testVehicleID].entryLane == allVehicleODInfoDataSet[referenceVehicleID].entryLane
-		&& allVehicleODInfoDataSet[testVehicleID].exitSection == allVehicleODInfoDataSet[referenceVehicleID].exitSection
+		&& allVehicleSketchyInfoDataSet[testVehicleID].entrySection == allVehicleSketchyInfoDataSet[referenceVehicleID].entrySection
+		&& allVehicleSketchyInfoDataSet[testVehicleID].entryLane == allVehicleSketchyInfoDataSet[referenceVehicleID].entryLane
+		&& allVehicleSketchyInfoDataSet[testVehicleID].exitSection == allVehicleSketchyInfoDataSet[referenceVehicleID].exitSection
 		)
 	{
 		return true;
@@ -884,7 +877,7 @@ bool behavioralModelParticular::isControlGroupVehicle(int referenceVehicleID, in
 }
 
 // record travel time, path length and OD
-void behavioralModelParticular::recordAllVehicleODInfo(A2SimVehicle *vehicle)
+void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicle)
 {
 
 
@@ -892,45 +885,55 @@ void behavioralModelParticular::recordAllVehicleODInfo(A2SimVehicle *vehicle)
 	double currTime = AKIGetCurrentSimulationTime(); // seconds
 	int currSectionID = vehicle->getIdCurrentSection();
 
-	// record isSmartVehicle
-	simVehicleParticular * vehicle_temp = (simVehicleParticular*)vehicle;
-	allVehicleODInfoDataSet[vehID].isSmartVehicle = vehicle_temp->getIsSmartVehicle();
+	
 
 	// record time infomation
-	if (allVehicleODInfoDataSet[vehID].entryTime == 0)
-		allVehicleODInfoDataSet[vehID].entryTime = currTime;
-	if (allVehicleODInfoDataSet[vehID].exitTime < currTime)
-		allVehicleODInfoDataSet[vehID].exitTime = currTime;
-	if (allVehicleODInfoDataSet[vehID].exitTime - allVehicleODInfoDataSet[vehID].entryTime > allVehicleODInfoDataSet[vehID].totalTravelTime)
-		allVehicleODInfoDataSet[vehID].totalTravelTime = allVehicleODInfoDataSet[vehID].exitTime - allVehicleODInfoDataSet[vehID].entryTime;
+	if (allVehicleSketchyInfoDataSet[vehID].entryTime == 0)
+		allVehicleSketchyInfoDataSet[vehID].entryTime = currTime;
+	if (allVehicleSketchyInfoDataSet[vehID].exitTime < currTime)
+		allVehicleSketchyInfoDataSet[vehID].exitTime = currTime;
+	if (allVehicleSketchyInfoDataSet[vehID].exitTime - allVehicleSketchyInfoDataSet[vehID].entryTime > allVehicleSketchyInfoDataSet[vehID].totalTravelTime)
+		allVehicleSketchyInfoDataSet[vehID].totalTravelTime = allVehicleSketchyInfoDataSet[vehID].exitTime - allVehicleSketchyInfoDataSet[vehID].entryTime;
 
 
 
 	// record path length section by section
-	if (currSectionID != allVehicleODInfoDataSet[vehID].preSectionID)
+	if (currSectionID != allVehicleSketchyInfoDataSet[vehID].preSectionID)
 	{
 		A2KSectionInf sectionInfo;
 		sectionInfo = AKIInfNetGetSectionANGInf(currSectionID);
 
-		allVehicleODInfoDataSet[vehID].totalTravelPathLength += sectionInfo.length;
-		allVehicleODInfoDataSet[vehID].preSectionID = currSectionID;
+		allVehicleSketchyInfoDataSet[vehID].totalTravelPathLength += sectionInfo.length;
+		allVehicleSketchyInfoDataSet[vehID].preSectionID = currSectionID;
 	}
 
 
 	// record OD 
 	if (getEntrySectionSequence(currSectionID) != -1)
 	{
-		allVehicleODInfoDataSet[vehID].entrySection = currSectionID;
-		allVehicleODInfoDataSet[vehID].entryLane = vehicle->getIdCurrentLane(); // since the lane changing cannot happened in the input sections which have only one lane. 
-		allVehicleODInfoDataSet[vehID].isSmartVehicle = ((simVehicleParticular*)vehicle)->getIsSmartVehicle();
+		allVehicleSketchyInfoDataSet[vehID].entrySection = currSectionID;
+		allVehicleSketchyInfoDataSet[vehID].entryLane = vehicle->getIdCurrentLane(); // since the lane changing cannot happened in the input sections which have only one lane. 
+		allVehicleSketchyInfoDataSet[vehID].isSmartVehicle = ((simVehicleParticular*)vehicle)->getIsSmartVehicle();
 	}
 	if (isExitSection(currSectionID))
 	{
-		allVehicleODInfoDataSet[vehID].exitSection = currSectionID;
+		allVehicleSketchyInfoDataSet[vehID].exitSection = currSectionID;
 
 	}
 
+	
+	// record Vehicle Type
+	// record isSmartVehicle
+	simVehicleParticular * vehicle_temp = (simVehicleParticular*)vehicle;
+	allVehicleSketchyInfoDataSet[vehID].isSmartVehicle = vehicle_temp->getIsSmartVehicle();
 
+	// record lane changing number
+	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getNumberOfLanesInCurrentSection());
+	if (allVehicleSketchyInfoDataSet[vehID].preLane != currAbsoluteLaneID && getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1)
+	{
+		++allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes;
+	}
+	optVehDataSet.preLane = currAbsoluteLaneID;
 
 }
 
@@ -941,11 +944,11 @@ void behavioralModelParticular::recordControlGroupTrajectory(int referenceVehicl
 	int currentSectionID = testVehicle->getIdCurrentSection();
 
 	if (// 1. time window comparison
-		allVehicleODInfoDataSet[testVehicleID].entryTime > allVehicleODInfoDataSet[referenceVehicleID].entryTime - 30
-		&& allVehicleODInfoDataSet[testVehicleID].entryTime < allVehicleODInfoDataSet[referenceVehicleID].entryTime + 30
+		allVehicleSketchyInfoDataSet[testVehicleID].entryTime > allVehicleSketchyInfoDataSet[referenceVehicleID].entryTime - 30
+		&& allVehicleSketchyInfoDataSet[testVehicleID].entryTime < allVehicleSketchyInfoDataSet[referenceVehicleID].entryTime + 30
 		// 2. OD comparison
-		&& allVehicleODInfoDataSet[testVehicleID].entrySection == allVehicleODInfoDataSet[referenceVehicleID].entrySection
-		&& allVehicleODInfoDataSet[testVehicleID].entryLane == allVehicleODInfoDataSet[referenceVehicleID].entryLane
+		&& allVehicleSketchyInfoDataSet[testVehicleID].entrySection == allVehicleSketchyInfoDataSet[referenceVehicleID].entrySection
+		&& allVehicleSketchyInfoDataSet[testVehicleID].entryLane == allVehicleSketchyInfoDataSet[referenceVehicleID].entryLane
 		//&& allVehicleODInfoDataSet[testVehicleID].exitSection == allVehicleODInfoDataSet[referenceVehicleID].exitSection
 		)
 	{
@@ -1136,7 +1139,8 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 	// if leaders are too far, ignore them
 	if (leaders_current[1] != NULL)
 	{
-		if (currentVehicle->getPositionReferenceVeh(0, leaders_current[1], 0) > farSightInfoLimit)
+		double gap = leaders_current[1]->getPositionReferenceVeh(0, currentVehicle, 0);
+		if (gap>0 && gap> farSightInfoLimit)
 		{
 			leaders_current[1] = NULL;
 		}
@@ -1144,15 +1148,17 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 
 	if (leaders_right[1] != NULL)
 	{
-		if (currentVehicle->getPositionReferenceVeh(0, leaders_right[1], 0) > farSightInfoLimit)
+		double gap = leaders_right[1]->getPositionReferenceVeh(0, currentVehicle, 0);
+		if (gap>0 && gap> farSightInfoLimit)
 		{
 			leaders_right[1] = NULL;
 		}
 	}
-
+	
 	if (leaders_left[1] != NULL)
 	{
-		if (currentVehicle->getPositionReferenceVeh(0, leaders_left[1], 0) > farSightInfoLimit)
+		double gap = leaders_left[1]->getPositionReferenceVeh(0, currentVehicle, 0);
+		if (gap>0 && gap > farSightInfoLimit)
 		{
 			leaders_left[1] = NULL;
 		}
@@ -1479,12 +1485,12 @@ void behavioralModelParticular::outPutControlGroupVehiclesODInfo()
 		{
 			outPutControlGroupVehicleODInfo
 				<< vehID << "\t"
-				<< allVehicleODInfoDataSet[vehID].entrySection << "\t"
-				<< allVehicleODInfoDataSet[vehID].exitSection << "\t"
-				<< allVehicleODInfoDataSet[vehID].entryTime << "\t"
-				<< allVehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
-				<< allVehicleODInfoDataSet[vehID].totalTravelTime << "\t"
-				<< allVehicleODInfoDataSet[vehID].totalTravelTime / allVehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << endl;
+				<< allVehicleSketchyInfoDataSet[vehID].entrySection << "\t"
+				<< allVehicleSketchyInfoDataSet[vehID].exitSection << "\t"
+				<< allVehicleSketchyInfoDataSet[vehID].entryTime << "\t"
+				<< allVehicleSketchyInfoDataSet[vehID].totalTravelPathLength << "\t"
+				<< allVehicleSketchyInfoDataSet[vehID].totalTravelTime << "\t"
+				<< allVehicleSketchyInfoDataSet[vehID].totalTravelTime / allVehicleSketchyInfoDataSet[vehID].totalTravelPathLength * 1000 << endl;
 		}
 	}
 	outPutControlGroupVehicleODInfo << endl;
@@ -1494,7 +1500,7 @@ void behavioralModelParticular::outPutControlGroupVehiclesODInfo()
 }
 
 
-void behavioralModelParticular::outPutAllVehicleODInfo()
+void behavioralModelParticular::outPutAllVehicleSketchyInfo()
 {
 	string outPutAllVehicleODInfoFullPath;
 	string outPutAllVehicleODInfoFileName = "AllVehicleODInfo.dat";
@@ -1511,20 +1517,22 @@ void behavioralModelParticular::outPutAllVehicleODInfo()
 		<< "totalTravelPathLength" << "\t"
 		<< "totalTravelTime" << "\t"
 		<< "Average Travel Time" << "\t"
+		<< "Total Lane Changing Number" << "\t"
 		<< "Smart Vehicle Identify"
 		<< endl;
 	for (auto vehID = 1; vehID < 16000; ++vehID)
 	{
 		outPutAllVehicleODInfo
 			<< vehID << "\t"
-			<< allVehicleODInfoDataSet[vehID].entrySection << "\t"
-			<< allVehicleODInfoDataSet[vehID].exitSection << "\t"
-			<< allVehicleODInfoDataSet[vehID].entryTime << "\t"
-			<< allVehicleODInfoDataSet[vehID].exitTime << "\t"
-			<< allVehicleODInfoDataSet[vehID].totalTravelPathLength << "\t"
-			<< allVehicleODInfoDataSet[vehID].totalTravelTime << "\t"
-			<< allVehicleODInfoDataSet[vehID].totalTravelTime / allVehicleODInfoDataSet[vehID].totalTravelPathLength * 1000 << "\t"
-			<< allVehicleODInfoDataSet[vehID].isSmartVehicle
+			<< allVehicleSketchyInfoDataSet[vehID].entrySection << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].exitSection << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].entryTime << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].exitTime << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].totalTravelPathLength << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].totalTravelTime << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].totalTravelTime / allVehicleSketchyInfoDataSet[vehID].totalTravelPathLength * 1000 << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].isSmartVehicle
 			<< endl;
 
 	}
@@ -1599,6 +1607,7 @@ void behavioralModelParticular::outPutOptVehLaneChangingDetials()
 				pow(iter.occurrenceCoordinationY, 2)) << "\t"
 			<< iter.preLane << "\t"
 			<< iter.folLane << "\t"
+			<< "\n"
 			<< endl;
 	}
 
@@ -2224,7 +2233,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 	else
 	{
-		recordAllVehicleODInfo(vehicle);
+		recordAllVehicleSketchyInfo(vehicle);
 		recordControlGroupTrajectory(optimiazedVehID, vehicle);
 	}
 	if (vehicle_particular_Temp->getIsSmartVehicle() || vehID == optimiazedVehID)
@@ -2318,7 +2327,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		else
 		{
 			outPutStatisticsData();
-			outPutAllVehicleODInfo();
+			outPutAllVehicleSketchyInfo();
 		}
 
 		haveOutPutFunctionsRan = true;
@@ -2830,14 +2839,17 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		}
 
 	}
+
+
+
 	/************ otherwise, normal lane changing *************/
-	else if (vehicle_particular_Temp->getPlatoonPositionCACC() != 0)
-	{
-		// if CACC equipped vehicle is in platoon, it will not change lanes except Mandatory Heuristic 
-		vehicle->applyLaneChanging(0, threadId);
-		return true;
-	}
-	else if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
+	//if (vehicle_particular_Temp->getIsCACC() && vehicle_particular_Temp->getPlatoonPositionCACC() != 0)
+	//{
+	//	// if CACC equipped vehicle is in platoon, it will not change lanes except Mandatory Heuristic 
+	//	vehicle->applyLaneChanging(0, threadId);
+	//	return true;
+	//}
+	if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
 	{
 
 

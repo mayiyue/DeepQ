@@ -103,7 +103,7 @@ public:
 
 	bool isControlGroupVehicle(int referenceVehicleID, int testVehicleID);
 
-	void recordAllVehicleODInfo(A2SimVehicle * vehicle);
+	void recordAllVehicleSketchyInfo(A2SimVehicle * vehicle);
 
 	void recordControlGroupTrajectory(int referenceVehicleID, A2SimVehicle * testVehicle);
 
@@ -128,7 +128,7 @@ public:
 
 	void outPutControlGroupVehiclesODInfo();
 
-	void outPutAllVehicleODInfo();
+	void outPutAllVehicleSketchyInfo();
 
 	void outPutOptVehTrajectoryDataSet();
 
