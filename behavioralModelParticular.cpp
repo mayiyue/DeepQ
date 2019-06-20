@@ -37,14 +37,16 @@ bool const isTrainingQLearning = false;
 bool const useFarSightInfo = true;
 bool const isTestSingleVehicle = false;
 bool const isForbidSVExitFromOffRamp = false;
-bool const useIDM = true;
-bool const useHeuristicLaneChangeModel = true;
-bool const useMOBIL = false;
-bool const useAsymmetricMOBIL = false;        // Symmetric MOBIL is default
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 bool const useQLearning = true;
 bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
 bool const useOutSideInPut_OptimizingVehicleID = false;
+bool const useIDM = true;
+bool const useHeuristicLaneChangeModel = true;
+bool const useMOBIL = false;
+bool const useAsymmetricMOBIL = false; // Symmetric MOBIL is default
+
+
 
 // triggers
 bool hasRanInThisTimeSetp = false; // for some codes that need be run only one time in one simulation step
@@ -71,17 +73,17 @@ double const joinCACCPlatoonDistanceLimit = 100; //m
 
 
 // for q learning 
-double const laneChangingThresholdForQL = 1; // when training, it will not work
+double const laneChangingThresholdForQL = 0; // when training, it will not work
 int const numberOfEnvState = 6;
 double const farSightInfoLimit = 250; // m
 
 // for lane changing Optimizing Working
 double  penetrationOfSmartVehicles = 0;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
 
-// a new vehicle entry into the network will be setted as optimized vehicle 
+// a new vehicle entry into the network will be set as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 0;
-int optimizedVehIDSequence[100]; //maximun of array size will not over the maximum of iteration
+int optimizedVehIDSequence[100]; //maximum of array size will not over the maximum of iteration
 int optimiazedVehID = 4000;//4000 4121 5070 // work only when   useIterationOptimization = false
 
 
@@ -887,7 +889,7 @@ void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicl
 
 	
 
-	// record time infomation
+	// record time information
 	if (allVehicleSketchyInfoDataSet[vehID].entryTime == 0)
 		allVehicleSketchyInfoDataSet[vehID].entryTime = currTime;
 	if (allVehicleSketchyInfoDataSet[vehID].exitTime < currTime)
@@ -933,7 +935,7 @@ void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicl
 	{
 		++allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes;
 	}
-	optVehDataSet.preLane = currAbsoluteLaneID;
+	allVehicleSketchyInfoDataSet[vehID].preLane = currAbsoluteLaneID;
 
 }
 
