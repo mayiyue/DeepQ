@@ -120,6 +120,10 @@ public:
 
 	void recordOptVehiclTrajectory(A2SimVehicle * vehicle, double currentTime, int currSectionID);
 
+	void recordRampMergingFlow(A2SimVehicle * vehicle);
+
+	void outPutRecordRampMergingFlow();
+
 	void inputParameterSetFromAFT();
 
 	void inputQTable();

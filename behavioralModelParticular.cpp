@@ -224,6 +224,7 @@ map<int, double> parameterSet = {
 
 list <VehiclePathInfo> controlGroupVehicleDataSet;
 
+int rampMergingFlow[240 + 1] = { 0 };
 
 // return sectionID, sectionSequence[sequence]=sectionID
 int const sequenceSectionID[23] = { 0,363,364,370,387,1022,952,949,386,395,935,404,974,982,967,406,414,423,986,990,994,998,1002 };
@@ -1328,6 +1329,49 @@ void behavioralModelParticular::recordOptVehiclTrajectory(A2SimVehicle *vehicle,
 
 	optVehDataSet.trajectoryDataSet.push_back(trajectoryDataPoint);
 }
+
+
+
+
+
+void behavioralModelParticular::recordRampMergingFlow(A2SimVehicle *vehicle)
+{
+	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
+
+	int vehID = vehicle->getId();
+	if (allVehicleSketchyInfoDataSet[vehID].preLane == 0 && currAbsoluteLaneID == 1 && vehicle->getIdCurrentSection() == 404)
+	{
+
+		int minute =(int) floor(AKIGetCurrentSimulationTime() / 60.0);
+		if (minute < 240)
+			++rampMergingFlow[minute];
+	}
+	allVehicleSketchyInfoDataSet[vehID].preLane = currAbsoluteLaneID;
+}
+
+
+void behavioralModelParticular::outPutRecordRampMergingFlow()
+{
+	string outPutRampMergingFlowFullPath;
+	string outPutRampMergingFlowFileName = "RampMergingFlow.dat";
+	outPutRampMergingFlowFullPath = DATAPATH + outPutRampMergingFlowFileName;
+	ofstream outPutRampMergingFlow;
+	outPutRampMergingFlow.open(outPutRampMergingFlowFullPath, ios::app);
+
+
+	for (int i = 0; i < 241; i++)
+	{
+		outPutRampMergingFlow
+			<< rampMergingFlow[i] * 60 << endl;
+	}
+
+	outPutRampMergingFlow << endl;
+
+	outPutRampMergingFlow.close();
+
+
+}
+
 
 
 void behavioralModelParticular::inputParameterSetFromAFT()
@@ -3009,6 +3053,7 @@ bool behavioralModelParticular::isVehicleGivingWay(A2SimVehicle *vehicleGiveWay,
 double behavioralModelParticular::computeMinimumGap(A2SimVehicle *vehicleUp, A2SimVehicle *vehicleDown, double Xup, double Vup, double Xdw, double Vdw, double Gap, bool ImprudentCase, bool VehicleIspVehDw)
 {
 	double GapMin = 0;
+	simVehicleParticular* vehicle_temp = (simVehicleParticular*)vehicleUp;
 	if (useHeuristicLaneChangeModel)
 	{
 		if (isOnRamp)
@@ -3017,6 +3062,15 @@ double behavioralModelParticular::computeMinimumGap(A2SimVehicle *vehicleUp, A2S
 		if (isSegmRamp)
 			return 10.0;
 	}
+	else if (vehicle_temp->getPlatoonPositionCACC() != 0)
+	{
+		double t_cur = (vehicleUp->getPositionReferenceVeh(0, vehicleDown, 0) - vehicleUp->getMinimumHeadway()) / vehicleUp->getSpeed(0);
+		return t_cur;
+
+	}
+
+
+
 	if (useIDM)
 	{
 		GapMin = getIDMDesiredGap((simVehicleParticular*)vehicleUp, (simVehicleParticular*)vehicleDown, Vup, Vdw, Gap);
@@ -3341,9 +3395,10 @@ double behavioralModelParticular::getIDMDecelerationSpeed(simVehicleParticular *
 		double bkin = (VelAnterior*VelAnterior) / (2 * GapAnterior);
 		double acceleration;
 
-		if (vehicle->getIsCACC() && (!leader->isFictitious()))
+		if (vehicle->getIsCACC())
 		{
-			acceleration = getCACCEquippedVehicleAcceleration(vehicle, leader);
+			double real_leader_shift = 0;
+			acceleration = getCACCEquippedVehicleAcceleration(vehicle, (simVehicleParticular*)vehicle->getRealLeader(real_leader_shift));
 		}
 		else
 		{
@@ -3998,19 +4053,46 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 }
 
 
-// platoon strategy
+
+
+//// platoon strategy
+//bool behavioralModelParticular::isInCACCPlatoon(double t_tar, double t_cur, double t_platoon, double t_ACC)
+//{
+//	if (t_tar == t_platoon&& t_tar < t_ACC)
+//	{
+//		return true;
+//	}
+//	else
+//	{
+//		return false;
+//	}
+//
+//}
+
 bool behavioralModelParticular::whetherJoinThePlatoon(simVehicleParticular*vehicle, simVehicleParticular*leader, double joinDistanceLimit)
 {
+	if (leader == NULL)
+	{
+		return false;
+	}
 
+	int currentSection = vehicle->getIdCurrentSection();
 	double currentSpeed, pos_cur, speed_leader, pos_leader;
 	double shift_temp = 0;
 	double shift_leader = 0;
 	double distanceToLeader = vehicle->getGap(shift_temp, leader, shift_leader, pos_cur, currentSpeed, pos_leader, speed_leader);
 
-
 	if (leader->getIsCACC()
 		&& leader->getPlatoonPositionCACC() < platoonMaxSize
-		&& distanceToLeader < joinDistanceLimit)
+		//&& distanceToLeader < joinDistanceLimit)
+		&&
+		// judge is the acceleration lane or not
+		!(
+		((currentSection == 404 || currentSection == 423) && vehicle->getIdCurrentLane() == 1)
+			|| (currentSection == 401 || currentSection == 582)
+			|| (currentSection == 928 || currentSection == 932)
+			)
+		)
 	{
 		return true;
 	}
@@ -4020,15 +4102,14 @@ bool behavioralModelParticular::whetherJoinThePlatoon(simVehicleParticular*vehic
 	}
 }
 
-
 //equipped car acceleration formulation
 double behavioralModelParticular::getCACCEquippedVehicleAcceleration(simVehicleParticular*vehicle, simVehicleParticular*leader)
 {
-
 	if (leader == NULL)
 	{
 		vehicle->setCACCPlatoonPosition(1);
-		return vehicle->getAcceleration();
+		double acceleration = vehicle->getAcceleration()*min(1 - pow((vehicle->getSpeed(0) / vehicle->getFreeFlowSpeed()), 4), 1);
+		return acceleration;
 	}
 	else
 	{
@@ -4051,20 +4132,18 @@ double behavioralModelParticular::getCACCEquippedVehicleAcceleration(simVehicleP
 		vehicle->setPreT_CACC(t_CACC);
 		double timeGap = t_CACC;
 
-
-
 		// Calculate s_CACC
 		double a = vehicle->getAcceleration();
 		double b = -vehicle->getDeceleration();
 		double s_CACC = vehicle->getMinimumDistanceInterVeh() + vehicle->getSpeed(0) * timeGap + vehicle->getSpeed(0)*(vehicle->getSpeed(0) - leader->getSpeed(0)) / (2 * sqrt(a*b)); // replace with 2 * sqrt
 
-
-
 		// Calculate s
-		double currentSpeed, pos_cur, speed_leader, pos_leader;
+		//double currentSpeed, pos_cur, speed_leader, pos_leader;
 		double shift_temp = 0;
 		double shiftLeader = 0;
-		double s = max(0, vehicle->getGap(shift_temp, leader, shiftLeader, pos_cur, currentSpeed, pos_leader, speed_leader)); // sometime it will return a value less than 0, I guess it's a bug of AIMSUN
+		double s = 0;// = max(0, vehicle->getGap(shift_temp, leader, shiftLeader, pos_cur, currentSpeed, pos_leader, speed_leader)); // sometime it will return a value less than 0, I guess it's a bug of AIMSUN
+		s = leader->getPositionReferenceVeh(0, vehicle, 0);
+
 
 		// Calculate a_intACC, a_int
 		double a_intACC = 1 - (s_CACC / s) * (s_CACC / s);
@@ -4073,7 +4152,7 @@ double behavioralModelParticular::getCACCEquippedVehicleAcceleration(simVehicleP
 		double acceleration_leader = get_IDM_acceleration(leader, (simVehicleParticular*)leader->getRealLeader(shift_leader2_temp));
 		double a_CACC = vehicle->getAcceleration();
 		double measuredGap = s / vehicle->getSpeed(0);
-		if (t_tar == t_plat && t_tar < vehicle->getACCModeTimeGap() && measuredGap < vehicle->getACCModeTimeGap())
+		if (t_tar == t_plat && t_cur < vehicle->getACCModeTimeGap())//&& measuredGap <  vehicle->getACCModeTimeGap())
 		{
 			a_int = a_intACC * (1 - k) + k * acceleration_leader / a_CACC;
 			vehicle->setCACCPlatoonPosition(leader->getPlatoonPositionCACC() + 1);
@@ -4083,18 +4162,11 @@ double behavioralModelParticular::getCACCEquippedVehicleAcceleration(simVehicleP
 			a_int = a_intACC;
 		}
 
-
-
-
 		// Calculate return acceleration
 		double X = vehicle->getSpeed(vehicle->isUpdated()) / vehicle->getFreeFlowSpeed();
 		double acceleration = a_CACC * min(a_int, (1 - pow(X, 4)));
-
-
-
-
 		return acceleration;
 	}
-
 }
+
 
