@@ -35,12 +35,11 @@ using namespace std;
 bool const needTestMsg = false;
 bool const isTrainingQLearning = false;
 bool const useFarSightInfo = true;
-bool const isTestSingleVehicle = false;
-bool const isForbidSVExitFromOffRamp = false;
+bool const isTestSingleVehicle = true;
+bool const isForbidSVExitFromOffRamp = true;
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
+
 bool const useQLearning = true;
-bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
-bool const useOutSideInPut_OptimizingVehicleID = false;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
@@ -56,6 +55,7 @@ bool haveOutPutFunctionsRan = false;
 bool haveInPutFunctionsRan = false;
 bool hasOutPutFilesInitiated = false;
 bool hasReadOptimizingVehicleID = false;
+bool hasReadLaneChangingThresholdForQL = false;
 
 // for IDM, (C)ACC
 double const penetrationOfACC = 0;
@@ -73,18 +73,25 @@ double const joinCACCPlatoonDistanceLimit = 100; //m
 
 
 // for q learning 
-double const laneChangingThresholdForQL = 0; // when training, it will not work
+double  laneChangingThresholdForQL = 0; // when training, it will not work
+bool const useOutSideInPut_laneChangingThresholdForQL = true;
+
+
 int const numberOfEnvState = 6;
 double const farSightInfoLimit = 250; // m
 
 // for lane changing Optimizing Working
 double  penetrationOfSmartVehicles = 0;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
+bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
+
+
 
 // a new vehicle entry into the network will be set as optimized vehicle 
 // when the previous optimized vehicle is in the exit section. 
 int optimizedExperienceTimes = 0;
 int optimizedVehIDSequence[100]; //maximum of array size will not over the maximum of iteration
-int optimiazedVehID = 4000;//4000 4121 5070 // work only when   useIterationOptimization = false
+int optimiazedVehID = -1;//4000 4121 5070 // work only when   useIterationOptimization = false
+bool const useOutSideInPut_OptimizingVehicleID = true;
 
 
 
@@ -147,7 +154,7 @@ struct TrajectoryData {
 	double acceleration;
 };
 struct LaneChangeDetail {
-	double occurrenceTime; // occurrence time of lanechanging
+	double occurrenceTime; // occurrence time of lane changing
 	int occurrenceSection;
 	double occurrencePositionInSection; // unit:m, position refers to current section
 	double occurrencePositionInFreeway; // unit:m, position 0 - 9.7 km (around)
@@ -266,6 +273,17 @@ void behavioralModelParticular::readOptimizingVehicleID()
 	readOptimizingVehicleIDFile.close();
 
 }
+
+void behavioralModelParticular::readLaneChangingThresholdForQL()
+{
+	ifstream readLaneChangingThresholdFile;
+	readLaneChangingThresholdFile.open("D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\InputData\\LaneChangingThreshold.dat", ios::in);
+
+	readLaneChangingThresholdFile >> laneChangingThresholdForQL;
+	readLaneChangingThresholdFile.close();
+
+}
+
 int behavioralModelParticular::getQLearningDecisionAction(A2SimVehicle* vehicle)
 {
 
@@ -446,25 +464,25 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 	if (useFarSightInfo)
 	{
 		stateID =
-			state_diff_ac_left *(int)pow(10, 8)
-			+ state_diff_ac_right* (int)pow(10, 7)
-			+ state_diff_an_left  *(int)pow(10, 6)
+			state_diff_ac_left * (int)pow(10, 8)
+			+ state_diff_ac_right * (int)pow(10, 7)
+			+ state_diff_an_left * (int)pow(10, 6)
 			+ state_diff_ao * (int)pow(10, 5)
-			+ state_diff_an_right* (int)pow(10, 4)
-			+ state_diff_mean_left *(int)pow(10, 3)
-			+ state_diff_sd_left *(int)pow(10, 2)
-			+ state_diff_mean_right *(int)pow(10, 1)
+			+ state_diff_an_right * (int)pow(10, 4)
+			+ state_diff_mean_left * (int)pow(10, 3)
+			+ state_diff_sd_left * (int)pow(10, 2)
+			+ state_diff_mean_right * (int)pow(10, 1)
 			+ state_diff_sd_right * (int)pow(10, 0);
 
 	}
 	else
 	{
 		stateID =
-			state_diff_ac_left *(int)pow(10, 8)
-			+ state_diff_ac_right* (int)pow(10, 7)
-			+ state_diff_an_left  *(int)pow(10, 6)
+			state_diff_ac_left * (int)pow(10, 8)
+			+ state_diff_ac_right * (int)pow(10, 7)
+			+ state_diff_an_left * (int)pow(10, 6)
 			+ state_diff_ao * (int)pow(10, 5)
-			+ state_diff_an_right* (int)pow(10, 4)
+			+ state_diff_an_right * (int)pow(10, 4)
 			+ 0 * (int)pow(10, 3)
 			+ 0 * (int)pow(10, 2)
 			+ 0 * (int)pow(10, 1)
@@ -646,7 +664,7 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(unsigned int
 		}
 	}
 	//  the vehicle can only change to right 
-	else if (curLane == maxLanes&&maxLanes != 1)
+	else if (curLane == maxLanes && maxLanes != 1)
 	{
 		if (randNUM < 0.5
 
@@ -659,7 +677,7 @@ int behavioralModelParticular::getAvailableActionRandomly_Qlearning(unsigned int
 			return 0; // current
 		}
 	}
-	else if (curLane == maxLanes&&maxLanes == 1) // can not change lane
+	else if (curLane == maxLanes && maxLanes == 1) // can not change lane
 	{
 		return 0; // current
 	}
@@ -802,7 +820,7 @@ bool behavioralModelParticular::isMainSection(int sectionID) //all sections on t
 Special Sections' lane 1 is acceleration lane or off-ramp lane
 In NetWorkAbsoluteLane, the lane ID of accelaeration lane and off-ramp lane is 0
 */
-int  behavioralModelParticular::getNetWorkAbsoluteLaneID(int sectionID, int curSectionLane)
+int  behavioralModelParticular::getNetWorkAbsoluteLaneID(int sectionID, int curSectionLaneID)
 {
 
 	switch (sectionID)
@@ -811,19 +829,23 @@ int  behavioralModelParticular::getNetWorkAbsoluteLaneID(int sectionID, int curS
 	case	404:
 	case	406:
 	case	423:
-		return --curSectionLane;
+		return --curSectionLaneID;
 	case 671:
 		return 3;
 	case 664:
 		return 2;
 	case 670:
 		return 1;
-	case 928:
+	case 928:     // first on-ramp input section
 		return 0;
-	case 932:
+	case 932:     // second on-ramp input section	
+		return 0;
+	case 396:     // first off-ramp out section
+		return 0;
+	case 415:     // first on-ramp out section
 		return 0;
 	default:
-		return curSectionLane;
+		return curSectionLaneID;
 	}
 
 }
@@ -887,7 +909,7 @@ void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicl
 	double currTime = AKIGetCurrentSimulationTime(); // seconds
 	int currSectionID = vehicle->getIdCurrentSection();
 
-	
+
 
 	// record time information
 	if (allVehicleSketchyInfoDataSet[vehID].entryTime == 0)
@@ -923,14 +945,14 @@ void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicl
 
 	}
 
-	
+
 	// record Vehicle Type
 	// record isSmartVehicle
 	simVehicleParticular * vehicle_temp = (simVehicleParticular*)vehicle;
 	allVehicleSketchyInfoDataSet[vehID].isSmartVehicle = vehicle_temp->getIsSmartVehicle();
 
 	// record lane changing number
-	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getNumberOfLanesInCurrentSection());
+	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
 	if (allVehicleSketchyInfoDataSet[vehID].preLane != currAbsoluteLaneID && getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1)
 	{
 		++allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes;
@@ -1056,7 +1078,7 @@ void behavioralModelParticular::recordOptVehiclePathLength(A2SimVehicle * vehicl
 }
 void behavioralModelParticular::recordOptVehiclLaneChangingInfo(A2SimVehicle *vehicle)
 {
-	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getNumberOfLanesInCurrentSection());
+	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
 	if (optVehDataSet.preLane != currAbsoluteLaneID && getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1)
 	{
 		++optVehDataSet.totalLaneChangeTimes;
@@ -1142,7 +1164,7 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 	if (leaders_current[1] != NULL)
 	{
 		double gap = leaders_current[1]->getPositionReferenceVeh(0, currentVehicle, 0);
-		if (gap>0 && gap> farSightInfoLimit)
+		if (gap > 0 && gap > farSightInfoLimit)
 		{
 			leaders_current[1] = NULL;
 		}
@@ -1151,16 +1173,16 @@ void behavioralModelParticular::getLeadersAccelerationsDistributionDifference(A2
 	if (leaders_right[1] != NULL)
 	{
 		double gap = leaders_right[1]->getPositionReferenceVeh(0, currentVehicle, 0);
-		if (gap>0 && gap> farSightInfoLimit)
+		if (gap > 0 && gap > farSightInfoLimit)
 		{
 			leaders_right[1] = NULL;
 		}
 	}
-	
+
 	if (leaders_left[1] != NULL)
 	{
 		double gap = leaders_left[1]->getPositionReferenceVeh(0, currentVehicle, 0);
-		if (gap>0 && gap > farSightInfoLimit)
+		if (gap > 0 && gap > farSightInfoLimit)
 		{
 			leaders_left[1] = NULL;
 		}
@@ -1609,10 +1631,9 @@ void behavioralModelParticular::outPutOptVehLaneChangingDetials()
 				pow(iter.occurrenceCoordinationY, 2)) << "\t"
 			<< iter.preLane << "\t"
 			<< iter.folLane << "\t"
-			<< "\n"
 			<< endl;
 	}
-
+	outPutLaneChanging << endl;
 	outPutLaneChanging.close();
 
 }
@@ -2111,7 +2132,7 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 	if (!isFictitiousVeh)
 	{
 		// for ACC
-		if (AKIGetRandomNumber() < penetrationOfACC)
+		if (penetrationOfACC != 0 && AKIGetRandomNumber() < penetrationOfACC)
 		{
 			newVehicle->setIsCACC(true);
 			newVehicle->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
@@ -2122,7 +2143,7 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 		/*Smart Vehicle Demand, Penetration Rate */
 
 
-		// method 1, using the discreted deamnd to denote smart vehicles
+		// method 1, using the discrete demand to denote smart vehicles
 		/*
 		if (readSmartVehicleDemandRumTimes == 0)
 		{
@@ -2184,7 +2205,14 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 			hasReadOptimizingVehicleID = true;
 		}
 
-		if (AKIGetRandomNumber() < penetrationOfSmartVehicles) // penetrationOfSmartVehicles, default value = 0
+		if (useOutSideInPut_laneChangingThresholdForQL && (!hasReadLaneChangingThresholdForQL))
+		{
+			readLaneChangingThresholdForQL();
+			hasReadLaneChangingThresholdForQL = true;
+		}
+
+
+		if (penetrationOfSmartVehicles != 0 && AKIGetRandomNumber() < penetrationOfSmartVehicles) // penetrationOfSmartVehicles, default value = 0
 		{
 			newVehicle->setIsSmartVehicle(true);
 		}
@@ -3065,7 +3093,7 @@ double behavioralModelParticular::getGippsDecelerationSpeed(simVehicleParticular
 		DecelEstimada = vehicle->getEstimationOfLeadersDeceleration(leader, VelAnteriorLeader);
 	}
 	double bn = vehicle->getDeceleration();
-	double bnTau = bn*RT;
+	double bnTau = bn * RT;
 	double VelImpuesta = bnTau;
 	double factorSqrt = 0;
 	if (VelAnteriorLeader < Tolerancia)
@@ -3110,9 +3138,9 @@ double behavioralModelParticular::getGippsDecelerationSpeed(simVehicleParticular
 				minimo = min(minimo, AdaptationDistance);
 			}
 			double maximo = max(VelAnteriorLeader, Tolerancia);
-			double expParam = 0.5*(1. - VelAnterior / maximo*(1 - (GapMin) / minimo));
+			double expParam = 0.5*(1. - VelAnterior / maximo * (1 - (GapMin) / minimo));
 			double expValue = (float)exp(expParam);//la función exp en 32/64 bits retorna el mismo valor usándola de este modo
-			VelImpuesta = VelAnterior*expValue;
+			VelImpuesta = VelAnterior * expValue;
 		}
 	}
 	if (controlDecelMax)
@@ -3149,7 +3177,7 @@ double behavioralModelParticular::getGippsMinimumGap(simVehicleParticular* pVehU
 	double GapMin = 0;
 	if (Vdw < 0.01)
 	{
-		GapMin = max(0., 0.5*Vup*tau + max(0., -Vup*Vup / (2 * pVehUp->getDeceleration()) + DecelFactorUp*(1. - 0.5*DecelFactorUp)*pVehUp->getDeceleration()*tau*tau + (1 - DecelFactorUp)*Vup*tau));
+		GapMin = max(0., 0.5*Vup*tau + max(0., -Vup * Vup / (2 * pVehUp->getDeceleration()) + DecelFactorUp * (1. - 0.5*DecelFactorUp)*pVehUp->getDeceleration()*tau*tau + (1 - DecelFactorUp)*Vup*tau));
 		if (DecelFactorUp > -Vup / (pVehUp->getDeceleration())*tau)
 		{
 			GapMin = max(0., 0.5*Vup*tau);
@@ -3158,7 +3186,7 @@ double behavioralModelParticular::getGippsMinimumGap(simVehicleParticular* pVehU
 	else
 	{
 		double DecelEstimada = pVehUp->getEstimationOfLeadersDeceleration(pVehDw, Vdw);
-		GapMin = max(0., (Vdw*Vdw) / (2 * DecelEstimada) + 0.5*Vup*tau + max(0., -Vup*Vup / (2 * pVehUp->getDeceleration()) + DecelFactorUp*(1. - 0.5*DecelFactorUp)*pVehUp->getDeceleration()*tau*tau + (1 - DecelFactorUp)*Vup*tau));
+		GapMin = max(0., (Vdw*Vdw) / (2 * DecelEstimada) + 0.5*Vup*tau + max(0., -Vup * Vup / (2 * pVehUp->getDeceleration()) + DecelFactorUp * (1. - 0.5*DecelFactorUp)*pVehUp->getDeceleration()*tau*tau + (1 - DecelFactorUp)*Vup*tau));
 		if (DecelFactorUp > -Vup / (pVehUp->getDeceleration())*tau)
 		{
 			GapMin = max(0., (Vdw*Vdw) / (2 * DecelEstimada) + 0.5*Vup*tau);
@@ -3491,7 +3519,7 @@ double behavioralModelParticular::getIDMDesiredGap(simVehicleParticular* pVehCur
 
 	double a = pVehCur->getAcceleration();
 	double b = -pVehCur->getDeceleration();
-	double desiredGap = pVehCur->getMinimumDistanceInterVeh() + max(0., speed_current*timeGap + speed_current*(speed_current - speed_leader) / (2 * sqrt(a*b))); // replace with 2 * sqrt
+	double desiredGap = pVehCur->getMinimumDistanceInterVeh() + max(0., speed_current*timeGap + speed_current * (speed_current - speed_leader) / (2 * sqrt(a*b))); // replace with 2 * sqrt
 	return desiredGap;
 }
 
@@ -3580,7 +3608,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 {
 
 
-	double a_bias = a_threshold*1.1;	// Asymmetric MOBIL
+	double a_bias = a_threshold * 1.1;	// Asymmetric MOBIL
 
 	int curLane = vehicle->getIdCurrentLane();
 	int numSect = vehicle->getIdCurrentSection();
@@ -3701,7 +3729,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 			=
 			ac_Left_LC - ac_Left_NOLC
 			+
-			politeness_factor*(an_Left_LC - an_Left_NOLC);//LEFT
+			politeness_factor * (an_Left_LC - an_Left_NOLC);//LEFT
 	}
 	else
 	{
@@ -3709,7 +3737,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 			=
 			ac_Left_LC - ac_Left_NOLC
 			+
-			politeness_factor*(an_Left_LC - an_Left_NOLC + ao_Left_LC - ao_Left_NOLC);//LEFT
+			politeness_factor * (an_Left_LC - an_Left_NOLC + ao_Left_LC - ao_Left_NOLC);//LEFT
 	}
 	// profits to RIGHT
 	if (useAsymmetric((simVehicleParticular*)vehicle) && (maxLanes - curLane == 0))
@@ -3718,7 +3746,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 			=
 			ac_Right_LC - ac_Right_NOLC
 			+
-			politeness_factor*(ao_Right_LC - ao_Right_NOLC);//Right
+			politeness_factor * (ao_Right_LC - ao_Right_NOLC);//Right
 	}
 	else
 	{
@@ -3726,7 +3754,7 @@ int behavioralModelParticular::MOBILDirection(A2SimVehicle *vehicle, double poli
 			=
 			ac_Right_LC - ac_Right_NOLC
 			+
-			politeness_factor*(an_Right_LC - an_Right_NOLC + ao_Right_LC - ao_Right_NOLC);//Right
+			politeness_factor * (an_Right_LC - an_Right_NOLC + ao_Right_LC - ao_Right_NOLC);//Right
 	}
 
 
@@ -4045,9 +4073,9 @@ double behavioralModelParticular::getCACCEquippedVehicleAcceleration(simVehicleP
 		double acceleration_leader = get_IDM_acceleration(leader, (simVehicleParticular*)leader->getRealLeader(shift_leader2_temp));
 		double a_CACC = vehicle->getAcceleration();
 		double measuredGap = s / vehicle->getSpeed(0);
-		if (t_tar == t_plat && t_tar < vehicle->getACCModeTimeGap() && measuredGap <  vehicle->getACCModeTimeGap())
+		if (t_tar == t_plat && t_tar < vehicle->getACCModeTimeGap() && measuredGap < vehicle->getACCModeTimeGap())
 		{
-			a_int = a_intACC*(1 - k) + k*acceleration_leader / a_CACC;
+			a_int = a_intACC * (1 - k) + k * acceleration_leader / a_CACC;
 			vehicle->setCACCPlatoonPosition(leader->getPlatoonPositionCACC() + 1);
 		}
 		else

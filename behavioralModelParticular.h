@@ -75,6 +75,8 @@ public:
 
 	void readOptimizingVehicleID();
 
+	void readLaneChangingThresholdForQL();
+
 	int getQLearningDecisionAction(A2SimVehicle * vehicle);
 
 	int convertQActionToDirection(int Qaction);
