@@ -34,12 +34,12 @@ using namespace std;
 // controllers on-off
 bool const needTestMsg = false;
 bool const isTrainingQLearning = false;
-bool const useFarSightInfo = true;
-bool const isTestSingleVehicle = true;
-bool const isForbidSVExitFromOffRamp = true;
+bool const useFarSightInfo = false;
+bool const isTestSingleVehicle = false;
+bool const isForbidSVExitFromOffRamp = false;
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 
-bool const useQLearning = true;
+bool const useQLearning = false;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
@@ -56,20 +56,23 @@ bool haveInPutFunctionsRan = false;
 bool hasOutPutFilesInitiated = false;
 bool hasReadOptimizingVehicleID = false;
 bool hasReadLaneChangingThresholdForQL = false;
+bool hasReadPenetrationOfEquippedCACC = false;
+
+
+
 
 // for IDM, (C)ACC
-double const penetrationOfACC = 0;
+double  penetrationOfEquippedCACC = 0;
+bool const useOutSideInPut_penetrationOfEquippedCACC = true;
 double const lowLimitOfACCTimeGap = 0.5;
 double const upLimitOfACCTimeGap = 0.7;
 
 //for CACC longitudinal model
 double const t_plat = 0.5; // sec
-double const t_ACC = 1.0; // sec
 double const platoonMaxSize = 5; // a platoon consists no more than 5 equipped cars.
 double const t_relaxationtime = 25; // sec
-double const k = 0.5;
-double const joinCACCPlatoonDistanceLimit = 100; //m
-
+double const k = 0.7;
+double const joinCACCPlatoonDistanceLimit = 10; //m
 
 
 // for q learning 
@@ -143,7 +146,7 @@ struct {
 	int preLane; // absolute Lane ID
 	int totalLaneChangingTimes;
 	bool isSmartVehicle; // TEST for SV demand
-}allVehicleSketchyInfoDataSet[16000]; // total vehicle number entry in the network is about 15600
+}allVehicleSketchyInfoDataSet[86000]; // total vehicle number entry in the network is about 15600
 
 struct TrajectoryData {
 	double time;
@@ -262,6 +265,16 @@ void behavioralModelParticular::readSmartVehiclePenetrationRate()
 
 	readSmartVehicleDemandFile >> penetrationOfSmartVehicles;
 	readSmartVehicleDemandFile.close();
+
+}
+
+void behavioralModelParticular::readPenetrationOfEquippedCACC()
+{
+	ifstream readPenetrationOfEquippedCACCFile;
+	readPenetrationOfEquippedCACCFile.open("D:\\working\\WorkingInEnhancedAIMSUNPlatform\\LaneChanging\\Data\\InputData\\PenetrationOfEquippedCACC.dat", ios::in);
+
+	readPenetrationOfEquippedCACCFile >> penetrationOfEquippedCACC;
+	readPenetrationOfEquippedCACCFile.close();
 
 }
 
@@ -2175,14 +2188,7 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 	simVehicleParticular * newVehicle = new simVehicleParticular(handlerVehicle, idHandler, isFictitiousVeh);
 	if (!isFictitiousVeh)
 	{
-		// for ACC
-		if (penetrationOfACC != 0 && AKIGetRandomNumber() < penetrationOfACC)
-		{
-			newVehicle->setIsCACC(true);
-			newVehicle->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
-			newVehicle->setPreT_CACC(newVehicle->getACCModeTimeGap());
-		}
-
+		
 
 		/*Smart Vehicle Demand, Penetration Rate */
 
@@ -2237,6 +2243,13 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 	*/
 
 	// method 2, using randomly denoting
+		if (useOutSideInPut_penetrationOfEquippedCACC && (!hasReadPenetrationOfEquippedCACC))
+		{
+			readPenetrationOfEquippedCACC();
+			hasReadPenetrationOfEquippedCACC = true;
+		}
+		
+		
 		if (useOutSideInPut_SmartVehiclePenetrationRate && (!hasReadSmartVehiclePenetrationRate))
 		{
 			readSmartVehiclePenetrationRate();
@@ -2254,6 +2267,16 @@ simVehicleParticular * behavioralModelParticular::arrivalNewVehicle(void *handle
 			readLaneChangingThresholdForQL();
 			hasReadLaneChangingThresholdForQL = true;
 		}
+
+
+		// for ACC
+		if (penetrationOfEquippedCACC != 0 && AKIGetRandomNumber() < penetrationOfEquippedCACC)
+		{
+			newVehicle->setIsCACC(true);
+			newVehicle->setTimeGapOfACC(generateTimeGapOfACC(lowLimitOfACCTimeGap, upLimitOfACCTimeGap));
+			newVehicle->setPreT_CACC(newVehicle->getACCModeTimeGap());
+		}
+
 
 
 		if (penetrationOfSmartVehicles != 0 && AKIGetRandomNumber() < penetrationOfSmartVehicles) // penetrationOfSmartVehicles, default value = 0
@@ -2307,9 +2330,12 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 	else
 	{
-		recordAllVehicleSketchyInfo(vehicle);
-		recordControlGroupTrajectory(optimiazedVehID, vehicle);
+		//recordAllVehicleSketchyInfo(vehicle);
+		//recordControlGroupTrajectory(optimiazedVehID, vehicle);
+		recordRampMergingFlow(vehicle);
 	}
+
+
 	if (vehicle_particular_Temp->getIsSmartVehicle() || vehID == optimiazedVehID)
 	{
 
@@ -2400,8 +2426,9 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		}
 		else
 		{
-			outPutStatisticsData();
-			outPutAllVehicleSketchyInfo();
+			//outPutStatisticsData();
+			//outPutAllVehicleSketchyInfo();
+			outPutRecordRampMergingFlow();
 		}
 
 		haveOutPutFunctionsRan = true;
@@ -4084,7 +4111,7 @@ bool behavioralModelParticular::whetherJoinThePlatoon(simVehicleParticular*vehic
 
 	if (leader->getIsCACC()
 		&& leader->getPlatoonPositionCACC() < platoonMaxSize
-		//&& distanceToLeader < joinDistanceLimit)
+		&& distanceToLeader < joinDistanceLimit
 		&&
 		// judge is the acceleration lane or not
 		!(

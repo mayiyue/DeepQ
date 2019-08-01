@@ -73,6 +73,8 @@ public:
 
 	void readSmartVehiclePenetrationRate();
 
+	void readPenetrationOfEquippedCACC();
+
 	void readOptimizingVehicleID();
 
 	void readLaneChangingThresholdForQL();
