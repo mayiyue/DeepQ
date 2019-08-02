@@ -1,8 +1,8 @@
 ﻿/*
 可以改进的地方：
 1. 把建立文件指针功能做成一个函数，提高复用性 2018/3/23 21.33
-2. 把optimized vehicle data 做成一个类，将数据与功能组织在一起，便于管理 2018-9-20 13:41:35
-2018-9-27 9:58:44已完成 VVVV 3. 使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28
+2. 把optimized vehicle data 做成一个类，将数据与功能组织在一起，便于管理 2018-9-20 13:41:35 
+3. 【completed】使用Git管理代码，同时建立完善的日志，记录想法变迁等内容。 2018-9-20 13:42:28 
 4. 写一个debug类或者一些debug函数，用于调试，摆脱传统的注释、运行部分 2018-9-20 13:55:25
 5. 2018-11-7 12:16:30 OPTvehicle数据结构中 pathlength有耦合
 6. 2019-3-7 15:09:18 把那些模块做成类，尽量避免耦合。行为类，数据类,数据开关类，测试类
@@ -133,21 +133,6 @@ struct {
 	double existTime;
 }haveOptimizedVeh = { false,0 };
 
-
-struct {
-	int entrySection;
-	int exitSection;
-	int entryLane;
-	double entryTime;
-	double exitTime;
-	double totalTravelTime;
-	double totalTravelPathLength;
-	int preSectionID;
-	int preLane; // absolute Lane ID
-	int totalLaneChangingTimes;
-	bool isSmartVehicle; // TEST for SV demand
-}allVehicleSketchyInfoDataSet[86000]; // total vehicle number entry in the network is about 15600
-
 struct TrajectoryData {
 	double time;
 	double coordinateX;
@@ -166,7 +151,33 @@ struct LaneChangeDetail {
 	int occurenceVehID;
 	int preLane; // using absolute network lane ID
 	int folLane; // using absolute network lane ID
+	
+	/*reocrd evaluation index for each lane changing
+
+		LaneChangingType: String, e.g. 'ego-efficient-Q', 'Gipps'
+		index1: double,
+		index2
+		...
+
+		a2	口	口    Left
+		a3	a1	口    Current
+		a4	口	口	  Right
+		deta_a_self = a`-a
+		deta_a_other = a3`-a3 + a2`-a2  OR a3`-a3 + a4`-a4
+	*/
+	struct
+	{
+		int laneChangingStrategyType; //  0 Gipps, 1 MOBIL, 2 ego-efficient-Q,
+		double preAcceleration_self;
+		double preAcceleration_other_left;
+		double preAcceleration_other_right;
+		double index1;
+		double index2;
+	}evaluation;
+
 };
+
+
 
 struct VehiclePathInfo {
 	list <LaneChangeDetail> laneChangeDetailSet; // the maximum times of lanechanging for one vehicle ID
@@ -195,6 +206,24 @@ struct VehiclePathInfo {
 	int preLane; // using absolute network lane ID
 
 }optVehDataSet{};
+
+
+struct {
+	int entrySection;
+	int exitSection;
+	int entryLane;
+	double entryTime;
+	double exitTime;
+	double totalTravelTime;
+	double totalTravelPathLength;
+	int preSectionID;
+	int preLane; // absolute Lane ID
+	int totalLaneChangingTimes;
+	bool isSmartVehicle; // TEST for SV demand
+	LaneChangeDetail laneChangingList;
+
+
+}allVehicleSketchyInfoDataSet[86000]; // under real deamnd, total vehicle number entry in the network is about 15600, otherwise, increase the array size
 
 
 //map sectionID->parameter
@@ -377,7 +406,7 @@ unsigned int behavioralModelParticular::getStateID_QLearning(A2SimVehicle* vehic
 
 
 	/*******************************************************************/
-	/**********************MOBIL CRITERION*****************************/
+	
 
 
 	//get current lane follower and leader
@@ -960,18 +989,69 @@ void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicl
 	}
 
 
-	// record Vehicle Type
-	// record isSmartVehicle
+	// record Vehicle Type, isSmartVehicle
 	simVehicleParticular * vehicle_temp = (simVehicleParticular*)vehicle;
 	allVehicleSketchyInfoDataSet[vehID].isSmartVehicle = vehicle_temp->getIsSmartVehicle();
 
-	// record lane changing number
+	
+
+	// if a lane changing occurs, record lane changing data
+	int curLane = vehicle->getIdCurrentLane();
+	int numSect = vehicle->getIdCurrentSection();
+	int maxLanes = vehicle->getNumberOfLanesInCurrentSection();
+
+	double	ac_Left_NOLC = 0;		//ac	//turn left
+	double	an_Left_NOLC = 0;		//an	//turn left
+	double	ao_Left_NOLC = 0;		//ao	//turn left
+
+	double	ac_Right_NOLC = 0;			//ac	//turn Right
+	double	an_Right_NOLC = 0;			//an	//turn Right
+	double	ao_Right_NOLC = 0;			//ao	//turn right
+
+
+	A2SimVehicle *pVehLeftDw = NULL;
+	A2SimVehicle *pVehLeftUp = NULL;
+	A2SimVehicle *pVehRightDw = NULL;
+	A2SimVehicle *pVehRightUp = NULL;
+	A2SimVehicle *pVehCurUp = NULL;
+	A2SimVehicle *pVehCurDw = NULL;
+
+	double shiftCurUp = 0, shiftCurDw = 0;
+	double ShiftUpLeft = 0, ShiftDwLeft = 0;
+	double ShiftUpRight = 0, ShiftDwRight = 0;
+
+
+	/*******************************************************************/
+
+	//get current lane follower and leader
+	vehicle->getUpDown(0, vehicle->getPosition(0), pVehCurUp, shiftCurUp, pVehCurDw, shiftCurDw);
+
+	//get left lane follower and leader
+	vehicle->getUpDown(-1, vehicle->getPosition(0), pVehLeftUp, ShiftUpLeft, pVehLeftDw, ShiftDwLeft);
+
+	//get right lane follower and leader
+	vehicle->getUpDown(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
+
+
 	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
 	if (allVehicleSketchyInfoDataSet[vehID].preLane != currAbsoluteLaneID && getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1)
 	{
 		++allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes;
+		setEvalueationIndexForLaneChanging(
+			currAbsoluteLaneID,
+			vehicle,
+			pVehLeftDw,
+			pVehLeftUp,
+			pVehRightDw,
+			pVehRightUp,
+			pVehCurUp,
+			pVehCurDw);
 	}
 	allVehicleSketchyInfoDataSet[vehID].preLane = currAbsoluteLaneID;
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_self = get_IDM_acceleration(vehicle, pVehCurDw);
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_left = get_IDM_acceleration(pVehLeftUp, pVehLeftDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_right = get_IDM_acceleration(pVehRightUp, pVehRightDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+
 
 }
 
@@ -1106,6 +1186,8 @@ void behavioralModelParticular::recordOptVehiclLaneChangingInfo(A2SimVehicle *ve
 
 		double temp_xback, temp_back;
 		vehicle->getCoordinates(laneChangingDetailNode.occurrenceCoordinationX, laneChangingDetailNode.occurrenceCoordinationY, temp_xback, temp_back);
+
+
 
 		laneChangingDetailNode.preLane = optVehDataSet.preLane;
 		laneChangingDetailNode.folLane = currAbsoluteLaneID;
@@ -1360,6 +1442,63 @@ void behavioralModelParticular::recordRampMergingFlow(A2SimVehicle *vehicle)
 			++rampMergingFlow[minute];
 	}
 	allVehicleSketchyInfoDataSet[vehID].preLane = currAbsoluteLaneID;
+}
+
+
+
+
+void behavioralModelParticular::setEvalueationIndexForLaneChanging(
+	double currAbsoluteLaneID,
+	A2SimVehicle * vehicle,
+	A2SimVehicle *pVehLeftDw,
+	A2SimVehicle *pVehLeftUp,
+	A2SimVehicle *pVehRightDw,
+	A2SimVehicle *pVehRightUp,
+	A2SimVehicle *pVehCurUp,
+	A2SimVehicle *pVehCurDw
+)
+{
+
+	int vehID = vehicle->getId();
+	simVehicleParticular *vehicle_temp = (simVehicleParticular*)vehicle;
+
+	
+	double curAcceleration_self = get_IDM_acceleration(vehicle, pVehCurDw);
+	double curAcceleration_other_left = get_IDM_acceleration(pVehLeftUp, pVehLeftDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+	double curAcceleration_other_right = get_IDM_acceleration(pVehRightUp, pVehRightDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+
+
+
+
+	// normalization
+	double index1Max = 0, index1Min = 0;
+	double index2Max = 0, index2Min = 0;
+
+
+
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_self = get_IDM_acceleration(vehicle, pVehCurDw);
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_left = get_IDM_acceleration(pVehLeftUp, pVehLeftDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_right = get_IDM_acceleration(pVehRightUp, pVehRightDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+
+
+	double deta_a_self = curAcceleration_self- allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_self;
+	double deta_a_other = 0;
+	if (currAbsoluteLaneID - allVehicleSketchyInfoDataSet[vehID].preLane > 0) // go left lane 
+	{
+		deta_a_other = curAcceleration_other_left - allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_left;
+	}
+	else // go right lane 
+	{
+		deta_a_other = curAcceleration_other_right - allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_right;
+	}
+	
+	if (deta_a_other != 0) {
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index1 = deta_a_self / deta_a_other;
+	}
+	
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index2 = deta_a_self + deta_a_other;
+
+
 }
 
 
@@ -1623,6 +1762,39 @@ void behavioralModelParticular::outPutAllVehicleSketchyInfo()
 
 }
 
+void behavioralModelParticular::outPutAllVehicleLaneChangingEvaluationData()
+{
+	string outPutAllVehicleLaneChangingEvaluationDataFullPath;
+	string outPutAllVehicleLaneChangingEvaluationDataFileName = "AllVehicleLaneChangingEvaluationData.dat";
+	outPutAllVehicleLaneChangingEvaluationDataFullPath = DATAPATH + outPutAllVehicleLaneChangingEvaluationDataFileName;
+	ofstream outPutAllVehicleLaneChangingEvaluationData;
+	outPutAllVehicleLaneChangingEvaluationData.open(outPutAllVehicleLaneChangingEvaluationDataFullPath, ios::app);
+
+	outPutAllVehicleLaneChangingEvaluationData
+		<< "VehicleID" << "\t"
+		<< "laneChangingListEvaluationLaneChangingStrategyType" << "\t"
+		<< "LaneChangingEvaluationIndex1" << "\t"
+		<< "LaneChangingEvaluationIndex2 " << "\t"
+		<< "TotalLaneChanging Number" << "\t"
+		<< "SmartVehicleIdentify"
+		<< endl;
+	for (auto vehID = 1; vehID < 16000; ++vehID)
+	{
+		outPutAllVehicleLaneChangingEvaluationData
+			<< vehID << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index1 << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index2 << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].isSmartVehicle
+			<< endl;
+
+	}
+	outPutAllVehicleLaneChangingEvaluationData << endl;
+
+	outPutAllVehicleLaneChangingEvaluationData.close();
+
+}
 
 
 void behavioralModelParticular::outPutOptVehTrajectoryDataSet()
@@ -2330,9 +2502,9 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 	else
 	{
-		//recordAllVehicleSketchyInfo(vehicle);
+		recordAllVehicleSketchyInfo(vehicle);
 		//recordControlGroupTrajectory(optimiazedVehID, vehicle);
-		recordRampMergingFlow(vehicle);
+		//recordRampMergingFlow(vehicle);
 	}
 
 
@@ -2428,11 +2600,13 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		{
 			//outPutStatisticsData();
 			//outPutAllVehicleSketchyInfo();
-			outPutRecordRampMergingFlow();
+			outPutAllVehicleLaneChangingEvaluationData();
+			//outPutRecordRampMergingFlow();
 		}
 
 		haveOutPutFunctionsRan = true;
 	}
+
 
 
 
@@ -2953,7 +3127,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
 	{
 
-
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType = 1;
 
 		//optimizedThreshold = parameterSet[currSectionID];
 		double optimizedPolitenessFactor = parameterSet[363];
@@ -2984,6 +3158,9 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 	else if ((vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle()) && useQLearning)
 	{
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType = 2;
+
+
 		if (isTrainingQLearning)
 		{
 			updateQTable(vehicle);
@@ -3060,7 +3237,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 
 
-
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType = 0;
 	// if above function did not return the value, return false, that is, use default Gipps lane change model
 	return false;
 

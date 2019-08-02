@@ -124,6 +124,8 @@ public:
 
 	void recordRampMergingFlow(A2SimVehicle * vehicle);
 
+	void setEvalueationIndexForLaneChanging(double currAbsoluteLaneID, A2SimVehicle * vehicle, A2SimVehicle * pVehLeftDw, A2SimVehicle * pVehLeftUp, A2SimVehicle * pVehRightDw, A2SimVehicle * pVehRightUp, A2SimVehicle * pVehCurUp, A2SimVehicle * pVehCurDw);
+
 	void outPutRecordRampMergingFlow();
 
 	void inputParameterSetFromAFT();
@@ -137,6 +139,8 @@ public:
 	void outPutControlGroupVehiclesODInfo();
 
 	void outPutAllVehicleSketchyInfo();
+
+	void outPutAllVehicleLaneChangingEvaluationData();
 
 	void outPutOptVehTrajectoryDataSet();
 
