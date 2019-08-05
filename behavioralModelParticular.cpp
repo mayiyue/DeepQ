@@ -223,7 +223,7 @@ struct {
 	list <LaneChangeDetail> laneChangingList;
 
 
-}allVehicleSketchyInfoDataSet[86000]; // under real deamnd, total vehicle number entry in the network is about 15600, otherwise, increase the array size
+}allVehicleSketchyInfoDataSet[16000]; // under real deamnd, total vehicle number entry in the network is about 15600, otherwise, increase the array size
 
 
 //map sectionID->parameter
@@ -1032,6 +1032,11 @@ void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicl
 	//get right lane follower and leader
 	vehicle->getUpDown(1, vehicle->getPosition(0), pVehRightUp, ShiftUpRight, pVehRightDw, ShiftDwRight);
 
+	if (allVehicleSketchyInfoDataSet[vehID].laneChangingList.empty())
+	{
+		LaneChangeDetail emptyNode = { 0 };
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.push_back(emptyNode);
+	}
 
 	int currAbsoluteLaneID = getNetWorkAbsoluteLaneID(vehicle->getIdCurrentSection(), vehicle->getIdCurrentLane());
 	if (allVehicleSketchyInfoDataSet[vehID].preLane != currAbsoluteLaneID && getEntrySectionSequence(vehicle->getIdCurrentSection()) == -1)
@@ -1461,6 +1466,8 @@ void behavioralModelParticular::setEvalueationIndexForLaneChanging(
 {
 
 	int vehID = vehicle->getId();
+
+
 	simVehicleParticular *vehicle_temp = (simVehicleParticular*)vehicle;
 
 	
@@ -1475,8 +1482,7 @@ void behavioralModelParticular::setEvalueationIndexForLaneChanging(
 	double index1Max = 0, index1Min = 0;
 	double index2Max = 0, index2Min = 0;
 
-	LaneChangeDetail node;
-
+	
 	double deta_a_self = curAcceleration_self - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_self;
 	double deta_a_other = 0;
 	if (currAbsoluteLaneID - allVehicleSketchyInfoDataSet[vehID].preLane > 0) // go left lane 
@@ -1489,12 +1495,14 @@ void behavioralModelParticular::setEvalueationIndexForLaneChanging(
 	}
 	
 	if (deta_a_other != 0) {
-		node.evaluation.index1 = deta_a_self / deta_a_other;
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.index1 = deta_a_self / deta_a_other;
 	}
 	
-	node.evaluation.index2 = deta_a_self + deta_a_other;
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.index2 = deta_a_self + deta_a_other;
 
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.push_back(node);
+	LaneChangeDetail newEmptyNode = { 0 };
+
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.push_back(newEmptyNode);
 
 }
 
