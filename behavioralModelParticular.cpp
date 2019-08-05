@@ -34,12 +34,12 @@ using namespace std;
 // controllers on-off
 bool const needTestMsg = false;
 bool const isTrainingQLearning = false;
-bool const useFarSightInfo = false;
+bool const useFarSightInfo = true;
 bool const isTestSingleVehicle = false;
 bool const isForbidSVExitFromOffRamp = false;
 bool const useIterationOptimization = false; // when it's value is true, the optimized vehicle will be selected in the entry section to re-experience the traffic condition over and over
 
-bool const useQLearning = false;
+bool const useQLearning = true;
 bool const useIDM = true;
 bool const useHeuristicLaneChangeModel = true;
 bool const useMOBIL = false;
@@ -77,7 +77,7 @@ double const joinCACCPlatoonDistanceLimit = 10; //m
 
 // for q learning 
 double  laneChangingThresholdForQL = 0; // when training, it will not work
-bool const useOutSideInPut_laneChangingThresholdForQL = true;
+bool const useOutSideInPut_laneChangingThresholdForQL = false;
 
 
 int const numberOfEnvState = 6;
@@ -85,7 +85,7 @@ double const farSightInfoLimit = 250; // m
 
 // for lane changing Optimizing Working
 double  penetrationOfSmartVehicles = 0;// if useOutSideInPut_SmartVehiclePenetrationRate = true, it will be read from a outside file.
-bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
+bool const useOutSideInPut_SmartVehiclePenetrationRate = true;
 
 
 
@@ -94,7 +94,7 @@ bool const useOutSideInPut_SmartVehiclePenetrationRate = false;
 int optimizedExperienceTimes = 0;
 int optimizedVehIDSequence[100]; //maximum of array size will not over the maximum of iteration
 int optimiazedVehID = -1;//4000 4121 5070 // work only when   useIterationOptimization = false
-bool const useOutSideInPut_OptimizingVehicleID = true;
+bool const useOutSideInPut_OptimizingVehicleID = false;
 
 
 
@@ -220,7 +220,7 @@ struct {
 	int preLane; // absolute Lane ID
 	int totalLaneChangingTimes;
 	bool isSmartVehicle; // TEST for SV demand
-	LaneChangeDetail laneChangingList;
+	list <LaneChangeDetail> laneChangingList;
 
 
 }allVehicleSketchyInfoDataSet[86000]; // under real deamnd, total vehicle number entry in the network is about 15600, otherwise, increase the array size
@@ -1048,9 +1048,10 @@ void behavioralModelParticular::recordAllVehicleSketchyInfo(A2SimVehicle *vehicl
 			pVehCurDw);
 	}
 	allVehicleSketchyInfoDataSet[vehID].preLane = currAbsoluteLaneID;
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_self = get_IDM_acceleration(vehicle, pVehCurDw);
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_left = get_IDM_acceleration(pVehLeftUp, pVehLeftDw) + get_IDM_acceleration(pVehCurUp, vehicle);
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_right = get_IDM_acceleration(pVehRightUp, pVehRightDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_self = get_IDM_acceleration(vehicle, pVehCurDw);
+		
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_other_left = get_IDM_acceleration(pVehLeftUp, pVehLeftDw) + get_IDM_acceleration(pVehCurUp, vehicle);
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_other_right = get_IDM_acceleration(pVehRightUp, pVehRightDw) + get_IDM_acceleration(pVehCurUp, vehicle);
 
 
 }
@@ -1474,30 +1475,26 @@ void behavioralModelParticular::setEvalueationIndexForLaneChanging(
 	double index1Max = 0, index1Min = 0;
 	double index2Max = 0, index2Min = 0;
 
+	LaneChangeDetail node;
 
-
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_self = get_IDM_acceleration(vehicle, pVehCurDw);
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_left = get_IDM_acceleration(pVehLeftUp, pVehLeftDw) + get_IDM_acceleration(pVehCurUp, vehicle);
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_right = get_IDM_acceleration(pVehRightUp, pVehRightDw) + get_IDM_acceleration(pVehCurUp, vehicle);
-
-
-	double deta_a_self = curAcceleration_self- allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_self;
+	double deta_a_self = curAcceleration_self - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_self;
 	double deta_a_other = 0;
 	if (currAbsoluteLaneID - allVehicleSketchyInfoDataSet[vehID].preLane > 0) // go left lane 
 	{
-		deta_a_other = curAcceleration_other_left - allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_left;
+		deta_a_other = curAcceleration_other_left - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_other_left;
 	}
 	else // go right lane 
 	{
-		deta_a_other = curAcceleration_other_right - allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.preAcceleration_other_right;
+		deta_a_other = curAcceleration_other_right - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_other_right;
 	}
 	
 	if (deta_a_other != 0) {
-		allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index1 = deta_a_self / deta_a_other;
+		node.evaluation.index1 = deta_a_self / deta_a_other;
 	}
 	
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index2 = deta_a_self + deta_a_other;
+	node.evaluation.index2 = deta_a_self + deta_a_other;
 
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.push_back(node);
 
 }
 
@@ -1780,15 +1777,17 @@ void behavioralModelParticular::outPutAllVehicleLaneChangingEvaluationData()
 		<< endl;
 	for (auto vehID = 1; vehID < 16000; ++vehID)
 	{
-		outPutAllVehicleLaneChangingEvaluationData
-			<< vehID << "\t"
-			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType << "\t"
-			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index1 << "\t"
-			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.index2 << "\t"
-			<< allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
-			<< allVehicleSketchyInfoDataSet[vehID].isSmartVehicle
-			<< endl;
-
+		for (auto i : allVehicleSketchyInfoDataSet[vehID].laneChangingList)
+		{
+			outPutAllVehicleLaneChangingEvaluationData
+				<< vehID << "\t"
+				<< i.evaluation.laneChangingStrategyType << "\t"
+				<< i.evaluation.index1 << "\t"
+				<< i.evaluation.index2 << "\t"
+				<< allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
+				<< allVehicleSketchyInfoDataSet[vehID].isSmartVehicle
+				<< endl;
+		}
 	}
 	outPutAllVehicleLaneChangingEvaluationData << endl;
 
@@ -3127,7 +3126,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
 	{
 
-		allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType = 1;
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 1;
 
 		//optimizedThreshold = parameterSet[currSectionID];
 		double optimizedPolitenessFactor = parameterSet[363];
@@ -3158,7 +3157,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 	else if ((vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle()) && useQLearning)
 	{
-		allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType = 2;
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 2;
 
 
 		if (isTrainingQLearning)
@@ -3237,7 +3236,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 
 
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.evaluation.laneChangingStrategyType = 0;
+	allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 0;
 	// if above function did not return the value, return false, that is, use default Gipps lane change model
 	return false;
 
