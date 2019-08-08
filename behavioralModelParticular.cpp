@@ -182,6 +182,8 @@ struct LaneChangeDetail {
 struct VehiclePathInfo {
 	list <LaneChangeDetail> laneChangeDetailSet; // the maximum times of lanechanging for one vehicle ID
 
+	
+
 	struct SectionPath {
 		double entrySectionTime;
 		int sectionID;
@@ -1783,20 +1785,34 @@ void behavioralModelParticular::outPutAllVehicleLaneChangingEvaluationData()
 		<< "TotalLaneChanging Number" << "\t"
 		<< "SmartVehicleIdentify"
 		<< endl;
+
+
+	double averageEvaluationIndex1 = 0;
+	double averageEvaluationIndex2 = 0;
+
 	for (auto vehID = 1; vehID < 16000; ++vehID)
 	{
 		for (auto i : allVehicleSketchyInfoDataSet[vehID].laneChangingList)
 		{
-			outPutAllVehicleLaneChangingEvaluationData
-				<< vehID << "\t"
-				<< i.evaluation.laneChangingStrategyType << "\t"
-				<< i.evaluation.index1 << "\t"
-				<< i.evaluation.index2 << "\t"
-				<< allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
-				<< allVehicleSketchyInfoDataSet[vehID].isSmartVehicle
-				<< endl;
+			averageEvaluationIndex1 = i.evaluation.index1 + averageEvaluationIndex1;
+			averageEvaluationIndex2 = i.evaluation.index2 + averageEvaluationIndex2;
 		}
+		
+		outPutAllVehicleLaneChangingEvaluationData
+			<< vehID << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.front().evaluation.laneChangingStrategyType << "\t"
+			<< averageEvaluationIndex1 / allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
+			<< averageEvaluationIndex2 / allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
+			<< allVehicleSketchyInfoDataSet[vehID].isSmartVehicle
+			<< endl;
+
+
 	}
+
+	
+
+
 	outPutAllVehicleLaneChangingEvaluationData << endl;
 
 	outPutAllVehicleLaneChangingEvaluationData.close();
