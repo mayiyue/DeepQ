@@ -1777,7 +1777,7 @@ void behavioralModelParticular::outPutAllVehicleLaneChangingEvaluationData()
 
 	outPutAllVehicleLaneChangingEvaluationData
 		<< "VehicleID" << "\t"
-		<< "laneChangingListEvaluationLaneChangingStrategyType" << "\t"
+		<< "LaneChangingStrategyType" << "\t"
 		<< "LaneChangingEvaluationIndex1" << "\t"
 		<< "LaneChangingEvaluationIndex2 " << "\t"
 		<< "TotalLaneChanging Number" << "\t"
