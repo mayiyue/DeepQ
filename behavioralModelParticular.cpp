@@ -154,7 +154,6 @@ struct LaneChangeDetail {
 	
 	/*reocrd evaluation index for each lane changing
 
-		LaneChangingType: String, e.g. 'ego-efficient-Q', 'Gipps'
 		index1: double,
 		index2
 		...
@@ -167,7 +166,7 @@ struct LaneChangeDetail {
 	*/
 	struct
 	{
-		int laneChangingStrategyType; //  0 Gipps, 1 MOBIL, 2 ego-efficient-Q,
+		int laneChangingStrategyType; //  0 None or Heuristic Mandatory Lane Changing, 1 Gipps, 2 MOBIL, 3 ego-efficient-Q,
 		double preAcceleration_self;
 		double preAcceleration_other_left;
 		double preAcceleration_other_right;
@@ -1485,17 +1484,19 @@ void behavioralModelParticular::setEvalueationIndexForLaneChanging(
 	double index2Max = 0, index2Min = 0;
 
 	
-	double deta_a_self = curAcceleration_self - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_self;
+	double deta_a_self =round( (curAcceleration_self - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_self)*100)/100; // round to 0.01
 	double deta_a_other = 0;
 	if (currAbsoluteLaneID - allVehicleSketchyInfoDataSet[vehID].preLane > 0) // go left lane 
 	{
-		deta_a_other = curAcceleration_other_left - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_other_left;
+		deta_a_other = round((curAcceleration_other_left - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_other_left) * 100) / 100; // round to 0.01
 	}
 	else // go right lane 
 	{
 		deta_a_other = curAcceleration_other_right - allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.preAcceleration_other_right;
 	}
 	
+	
+
 	if (deta_a_other != 0) {
 		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.index1 = deta_a_self / deta_a_other;
 	}
@@ -1787,32 +1788,29 @@ void behavioralModelParticular::outPutAllVehicleLaneChangingEvaluationData()
 		<< endl;
 
 
-	double averageEvaluationIndex1 = 0;
-	double averageEvaluationIndex2 = 0;
 
-	for (auto vehID = 1; vehID < 16000; ++vehID)
+	for (auto vehID = 1; !allVehicleSketchyInfoDataSet[vehID].laneChangingList.empty(); ++vehID)
 	{
-		for (auto i : allVehicleSketchyInfoDataSet[vehID].laneChangingList)
+
+		double averageEvaluationIndex1 = 0;
+		double averageEvaluationIndex2 = 0;
+
+		for (auto i: allVehicleSketchyInfoDataSet[vehID].laneChangingList)
 		{
 			averageEvaluationIndex1 = i.evaluation.index1 + averageEvaluationIndex1;
 			averageEvaluationIndex2 = i.evaluation.index2 + averageEvaluationIndex2;
 		}
-		
+
 		outPutAllVehicleLaneChangingEvaluationData
 			<< vehID << "\t"
 			<< allVehicleSketchyInfoDataSet[vehID].laneChangingList.front().evaluation.laneChangingStrategyType << "\t"
-			<< averageEvaluationIndex1 / allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
-			<< averageEvaluationIndex2 / allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
+			<< averageEvaluationIndex1 / (allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes + 1) << "\t"
+			<< averageEvaluationIndex2 / (allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes + 1) << "\t"
 			<< allVehicleSketchyInfoDataSet[vehID].totalLaneChangingTimes << "\t"
 			<< allVehicleSketchyInfoDataSet[vehID].isSmartVehicle
 			<< endl;
 
-
 	}
-
-	
-
-
 	outPutAllVehicleLaneChangingEvaluationData << endl;
 
 	outPutAllVehicleLaneChangingEvaluationData.close();
@@ -3150,7 +3148,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	if (vehicle_particular_Temp->getIsSmartVehicle() && useMOBIL)
 	{
 
-		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 1;
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 2;
 
 		//optimizedThreshold = parameterSet[currSectionID];
 		double optimizedPolitenessFactor = parameterSet[363];
@@ -3181,7 +3179,7 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 	}
 	else if ((vehID == optimiazedVehID || vehicle_particular_Temp->getIsSmartVehicle()) && useQLearning)
 	{
-		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 2;
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 3;
 
 
 		if (isTrainingQLearning)
@@ -3259,8 +3257,13 @@ bool behavioralModelParticular::evaluateLaneChanging(A2SimVehicle *vehicle, int 
 		return true;
 	}
 
+	// if the lane changing is not decided by other lane changing model, it will be decided by Gipps.
+	// because Heuristic Mandatory Lane Changing will directly return, the type of Heuristic is 0
+	if (allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType == 0)
+	{
+		allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 1;
+	}
 
-	allVehicleSketchyInfoDataSet[vehID].laneChangingList.back().evaluation.laneChangingStrategyType = 0;
 	// if above function did not return the value, return false, that is, use default Gipps lane change model
 	return false;
 
